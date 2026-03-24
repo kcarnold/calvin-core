@@ -9,7 +9,7 @@
         "https://catalog.calvin.edu/content.php*"
       ],
       "js": [
-        "script.js"
+        "dist/extension.js"
       ],
       "run_at": "document_idle"
     }
