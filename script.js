@@ -1,10 +1,11 @@
+// biome-ignore lint/complexity/useArrowFunction: keep it simple
 (function() {
   'use strict';
 
   const COLORS = {
     taken: '#2d8a4e', takenBg: '#e6f7ed',
     opportunity: '#b8860b', opportunityBg: '#fff8dc',
-    doubleCount: '#d4540e', doubleCountBg: '#fff0e6',
+    doubleCount: '#1a73e8', doubleCountBg: '#e8f0fe',
   };
 
   // ========== TRANSCRIPT PARSER ==========
