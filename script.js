@@ -92,12 +92,16 @@
 
       const ul = b.querySelector('ul');
       const courses = [];
+        const subDisciplineElements = [];
       let curSub = null;
       if (ul) {
         for (const li of ul.children) {
           if (li.classList.contains('acalog-adhoc')) {
             const t = li.textContent.trim();
-            if (!['Or', 'One from', 'And'].includes(t)) curSub = t;
+              if (!['Or', 'One from', 'And'].includes(t)) {
+                curSub = t;
+                subDisciplineElements.push({ name: t, element: li });
+              }
           } else if (li.classList.contains('acalog-course')) {
             const link = li.querySelector('a');
             const lt = link ? link.textContent.trim() : '';
@@ -110,7 +114,7 @@
       cats.push({
         type: isTag ? 'tag' : 'category', section, name, instructions: inst,
         reqType, minHours: minH, maxHours: maxH, maxPerDiscipline: maxPD,
-        courses, element: b, coreIndex: i, slug: slugify(name)
+        courses, subDisciplineElements, element: b, coreIndex: i, slug: slugify(name)
       });
     }
     return cats;
@@ -140,19 +144,23 @@
         hrsRaw += h; const d = c.subDiscipline || 'General'; hByD[d] = (hByD[d] || 0) + h;
       }
       const hrsEffective = (cat.maxHours !== null) ? Math.min(hrsRaw, cat.maxHours) : hrsRaw;
+      const maxedD = new Set();
+      if (cat.maxPerDiscipline) for (const [d, h] of Object.entries(hByD)) if (h >= cat.maxPerDiscipline) maxedD.add(d);
+      const hasRemainingCourseOptions = cat.courses.some(c => !takenSet.has(c.code) && !maxedD.has(c.subDiscipline || 'General'));
       let status;
       if (cat.reqType === 'pick-one') status = takenHere.length > 0 ? 'complete' : 'incomplete';
       else {
         const minReq = cat.minHours || 0;
-        if (minReq > 0) status = hrsRaw >= minReq ? 'complete' : 'incomplete';
-        else status = hrsRaw > 0 ? 'complete' : 'optional-available';
+        if (minReq > 0) {
+          if (hrsRaw < minReq) status = 'incomplete';
+          else if (cat.maxPerDiscipline && cat.maxHours !== null && hrsEffective < cat.maxHours && hasRemainingCourseOptions) status = 'satisfied';
+          else status = 'complete';
+        } else status = hrsRaw > 0 ? 'complete' : 'optional-available';
       }
       if (kuNames.includes(cat.name)) {
         kuH[cat.name] = { raw: hrsRaw, effective: hrsEffective, max: cat.maxHours };
         kuTotal += hrsEffective; if (hrsRaw > 0) kuCount++;
       }
-      const maxedD = new Set();
-      if (cat.maxPerDiscipline) for (const [d, h] of Object.entries(hByD)) if (h >= cat.maxPerDiscipline) maxedD.add(d);
       const courseAnnotations = cat.courses.map(c => {
         const isTaken = takenSet.has(c.code);
         const allCats = c2c[c.code] || [];
@@ -302,6 +310,7 @@
         font-weight:bold; margin-left:8px; vertical-align:middle; letter-spacing:0.3px; white-space:nowrap; }
       .ca-badge-complete { background:${COLORS.takenBg}; color:${COLORS.taken}; border:1px solid ${COLORS.taken}; }
       .ca-badge-incomplete { background:${COLORS.opportunityBg}; color:${COLORS.opportunity}; border:1px solid ${COLORS.opportunity}; }
+      .ca-badge-satisfied { background:#eef4ff; color:#1f5fbf; border:1px solid #8fb2ef; }
       .ca-badge-optional { background:#f0f0f0; color:#666; border:1px solid #ccc; }
       .ca-course-taken { background:${COLORS.takenBg}!important; border-left:3px solid ${COLORS.taken}!important; padding-left:6px; }
       .ca-course-taken > a:first-of-type { color:${COLORS.taken}!important; font-weight:bold; }
@@ -380,6 +389,7 @@
       .ca-toc-status { font-size:9px; margin-left:4px; vertical-align:middle; }
       .ca-toc-status-done { color:#4ade80; }
       .ca-toc-status-needed { color:#fbbf24; }
+      .ca-toc-status-satisfied { color:#8fb2ef; }
       .ca-toc-status-optional { color:#888; }
       #ca-toc-panel::-webkit-scrollbar { width:4px; }
       #ca-toc-panel::-webkit-scrollbar-track { background:transparent; }
@@ -457,6 +467,7 @@
       const label = r.name || r.section;
       let statusIcon = '';
       if (r.status === 'complete') statusIcon = '<span class="ca-toc-status ca-toc-status-done">\u2713</span>';
+      else if (r.status === 'satisfied') statusIcon = '<span class="ca-toc-status ca-toc-status-satisfied">\u25D4</span>';
       else if (r.status === 'incomplete') statusIcon = '<span class="ca-toc-status ca-toc-status-needed">\u25CB</span>';
       else if (r.status === 'optional-available') statusIcon = '<span class="ca-toc-status ca-toc-status-optional">\u25CB</span>';
       tocHTML += `<a href="#${r.slug}" class="ca-toc-item ${indent}" data-slug="${r.slug}">${label}${statusIcon}</a>`;
@@ -505,10 +516,21 @@
         const badge = document.createElement('span');
         badge.className = 'ca-badge';
         if (r.status === 'complete') { badge.className += ' ca-badge-complete'; badge.textContent = '\u2713 COMPLETE'; }
+        else if (r.status === 'satisfied') { badge.className += ' ca-badge-satisfied'; badge.textContent = 'MIN MET'; }
         else if (r.status === 'optional-available') { badge.className += ' ca-badge-optional'; badge.textContent = 'OPTIONAL'; }
         else { badge.className += ' ca-badge-incomplete';
           badge.textContent = r.reqType === 'hour-range' ? r.hoursEarned + '/' + (r.minHours || 0) + '+ hrs' : 'NEEDED'; }
         heading.appendChild(badge);
+      }
+
+      if (Array.isArray(r.subDisciplineElements)) {
+        for (const sub of r.subDisciplineElements) {
+          if (!r.maxedDisciplines.has(sub.name)) continue;
+          const badge = document.createElement('span');
+          badge.className = 'ca-badge ca-badge-complete';
+          badge.textContent = '\u2713 COMPLETE';
+          sub.element.appendChild(badge);
+        }
       }
 
       if (r.reqType === 'hour-range' && (r.hoursEarned > 0 || r.maxPerDiscipline)) {
