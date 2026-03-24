@@ -162,14 +162,14 @@
       results.push({ ...cat, status, hoursEarned: hrsRaw, hoursEffective: hrsEffective,
         hoursByDiscipline: hByD, maxedDisciplines: maxedD, takenCount: takenHere.length, courseAnnotations });
     }
-    return { results, kuSummary: { totalHours: kuTotal, requiredHours: 26, categoriesUsed: kuCount, requiredCategories: 5, hoursByCategory: kuH } };
+    return { results, transcript, kuSummary: { totalHours: kuTotal, requiredHours: 26, categoriesUsed: kuCount, requiredCategories: 5, hoursByCategory: kuH } };
   }
 
   // ========== RENDERER ==========
-  function render({ results, kuSummary }) {
+  function render({ results, kuSummary, transcript }) {
     // Cleanup previous run
     ['ca-styles', 'ca-toc-styles'].forEach(id => document.getElementById(id)?.remove());
-    document.querySelectorAll('.ca-legend,.ca-summary-panel,.ca-badge,.ca-hours-note,#ca-toc').forEach(e => e.remove());
+    document.querySelectorAll('.ca-legend,.ca-summary-panel,.ca-badge,.ca-hours-note,#ca-toc,.ca-disclaimer,.ca-transcript-section').forEach(e => e.remove());
     document.querySelectorAll('[class*="ca-course-"],[class*="ca-category-"]').forEach(e => {
       e.className = e.className.replace(/ca-[\w-]+/g, '').trim(); e.removeAttribute('data-ca-note');
     });
@@ -201,7 +201,7 @@
       .ca-summary-panel { background:linear-gradient(135deg,#1a1a2e,#16213e); color:#e0e0e0;
         padding:18px 22px; border-radius:10px; margin:16px 0;
         font-family:system-ui,-apple-system,sans-serif; box-shadow:0 2px 12px rgba(0,0,0,0.15); }
-      .ca-summary-panel h3 { color:#fff; margin:0 0 12px 0; font-size:16px; }
+      .ca-summary-panel h3 { color:#fff!important; margin:0 0 12px 0; font-size:16px; }
       .ca-summary-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px; }
       .ca-summary-item { background:rgba(255,255,255,0.08); padding:8px 12px; border-radius:6px; font-size:12px;
         cursor:pointer; transition:background 0.15s; text-decoration:none; display:block; }
@@ -220,6 +220,18 @@
         background:#fafafa; border:1px solid #e0e0e0; border-radius:6px; }
       .ca-legend-item { display:flex; align-items:center; gap:5px; }
       .ca-legend-swatch { width:14px; height:14px; border-radius:3px; border:1px solid rgba(0,0,0,0.15); }
+      .ca-disclaimer { font-size:12px; color:#7a5c00; background:#fffbea; border:1px solid #e8d87a;
+        border-radius:6px; padding:7px 12px; margin:10px 0 6px 0;
+        font-family:system-ui,-apple-system,sans-serif; line-height:1.5; }
+      .ca-transcript-section { font-family:system-ui,-apple-system,sans-serif; margin:24px 0 16px 0; }
+      .ca-transcript-section h3 { font-size:14px; color:#333!important; margin:0 0 8px 0; }
+      .ca-transcript-table { width:100%; border-collapse:collapse; font-size:12px; }
+      .ca-transcript-table th { background:#f0f0f0; text-align:left; padding:4px 8px;
+        border-bottom:2px solid #ccc; font-weight:bold; color:#333; }
+      .ca-transcript-table td { padding:3px 8px; border-bottom:1px solid #eee; vertical-align:top; }
+      .ca-transcript-table tr:hover td { background:#f9f9f9; }
+      .ca-transcript-cats { color:#555; font-style:italic; }
+      .ca-transcript-none { color:#bbb; font-style:italic; }
     `;
     document.head.appendChild(style);
 
@@ -300,8 +312,13 @@
       if (item) { e.preventDefault(); document.getElementById(item.dataset.slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     });
 
+    const disclaimer = document.createElement('div');
+    disclaimer.className = 'ca-disclaimer';
+    disclaimer.textContent = '\u26A0\uFE0F These results are unofficial and for planning purposes only. They may not reflect all institutional policies, transfer credit decisions, or advisor overrides. Always verify your core program status with your academic advisor or the Registrar.';
+
     firstCore.parentElement.insertBefore(legend, firstCore);
     firstCore.parentElement.insertBefore(panel, firstCore);
+    firstCore.parentElement.insertBefore(disclaimer, firstCore);
 
     // ===== FLOATING TOC =====
     const tocContainer = document.createElement('div');
@@ -417,6 +434,35 @@
           li.classList.add('ca-course-opportunity');
         } else li.classList.add('ca-course-maxed');
       }
+    }
+
+    // ===== TRANSCRIPT REFERENCE TABLE =====
+    if (transcript && transcript.length > 0) {
+      const courseToCategories = {};
+      for (const r of results) {
+        if (!r.courseAnnotations) continue;
+        for (const c of r.courseAnnotations) {
+          if (!courseToCategories[c.code]) courseToCategories[c.code] = [];
+          courseToCategories[c.code].push(r.name);
+        }
+      }
+
+      const section = document.createElement('div');
+      section.className = 'ca-transcript-section';
+      let rows = '';
+      for (const c of transcript) {
+        const cats = courseToCategories[c.code] || [];
+        const catsCell = cats.length > 0
+          ? `<span class="ca-transcript-cats">${cats.join(', ')}</span>`
+          : `<span class="ca-transcript-none">not in core lists</span>`;
+        rows += `<tr><td><strong>${c.code}</strong></td><td>${c.title}</td><td>${c.grade}</td><td>${c.hours}h</td><td>${catsCell}</td></tr>`;
+      }
+      section.innerHTML = `<h3>\u{1F4CB} Transcript Reference (${transcript.length} courses)</h3>
+        <table class="ca-transcript-table">
+          <thead><tr><th>Code</th><th>Title</th><th>Grade</th><th>Hrs</th><th>Core Categories</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      firstCore.parentElement.appendChild(section);
     }
   }
 
