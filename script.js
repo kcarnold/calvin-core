@@ -10,30 +10,25 @@
 
   // ========== TRANSCRIPT PARSER ==========
   function parseTranscript(text) {
+    const normalized = text
+      .replace(/\u00a0/g, ' ')
+      .replace(/\r\n?/g, '\n')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const rowRe = /\b([A-Z]{2,5})\s+(\d{3}[A-Z]?)\s*-\s*(.+?)\s+([A-Z]{1,2}[+-]?)\s+\d+(?:\.\d+)?\s+(\d+(?:\.\d+)?)\s+\d+(?:\.\d+)?\b/g;
     const raw = [];
-    const entries = text.split('Opens in new window');
-    for (const entry of entries) {
-      const fields = entry.split('\t').map(f => f.trim()).filter(f => f.length > 0);
-      for (let i = 0; i < fields.length; i++) {
-        const m = fields[i].match(/^([A-Z]{2,5})\s+(\d{3}[A-Z]?)\s*-\s*(.+)$/);
-        if (m) {
-          const code = m[1] + ' ' + m[2], title = m[3].trim();
-          let grade = '', hours = 0;
-          const rest = fields.slice(i + 1);
-          for (let j = 0; j < rest.length; j++) {
-            if (rest[j].match(/^[A-F][+-]?$|^[A-Z]{1,2}$/)) {
-              grade = rest[j];
-              for (let k = j + 1; k < Math.min(j + 4, rest.length); k++) {
-                if (rest[k].match(/^\d+$/)) { hours = parseInt(rest[k]); break; }
-              }
-              break;
-            }
-          }
-          raw.push({ code, title, grade, hours });
-          break;
-        }
-      }
+    let match;
+
+    while ((match = rowRe.exec(normalized)) !== null) {
+      const [, subject, courseNumber, rawTitle, grade, hoursText] = match;
+      raw.push({
+        code: subject + ' ' + courseNumber,
+        title: rawTitle.replace(/\s+/g, ' ').trim(),
+        grade,
+        hours: parseFloat(hoursText),
+      });
     }
+
     const byCode = new Map();
     const labs = [];
     for (const c of raw) {
