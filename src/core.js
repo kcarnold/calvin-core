@@ -50,7 +50,7 @@ export function parseCoreProgram(root) {
     const b = blocks[i];
     const h2 = b.querySelector('h2'), h3 = b.querySelector('h3'), h4 = b.querySelector('h4');
     const p = b.querySelector('p');
-    const inst = p ? p.textContent.trim() : '';
+    const inst = p ? p.textContent.replace(/\u00a0/g, ' ').trim() : '';
     const heading = h2 || h3 || h4;
 
     if (h2 && !h3 && !h4) {
