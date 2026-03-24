@@ -36,7 +36,55 @@ Pasting runs the audit immediately.
 
 Firefox temporary add-ons unload when the browser restarts, so that path is best for testing. For broader student distribution, publish the extension package.
 
+> **Note:** Run `npm run build` first — the manifest now points to `dist/extension.js`.
+
+## Development
+
+```sh
+npm install
+npm run build   # → dist/extension.js + dist/bookmarklet.js
+npm test         # run test harness against transcript fixtures
+```
+
+## Testing
+
+Put transcript `.txt` files in `test/fixtures/` (gitignored so student data stays local):
+
+```sh
+# First run prints analysis JSON for review:
+npm test
+
+# Snapshot the output as the expected baseline:
+node test/run-test.js test/fixtures/transcript-alice.txt > test/fixtures/transcript-alice.expected.json
+
+# Future runs assert results match the snapshot:
+npm test
+```
+
+The test harness auto-fetches the catalog HTML on first run.
+
+## Bookmarklet
+
+After `npm run build`, wrap `dist/bookmarklet.js` in a `javascript:` URL:
+
+```sh
+echo "javascript:$(cat dist/bookmarklet.js)" | pbcopy
+```
+
+Paste as a bookmark's URL. Click it on the catalog page.
+
 ## Files
 
-- `manifest.json`: WebExtension manifest for Chrome, Edge, and Firefox.
-- `script.js`: content script that injects the transcript input panel and renders the audit.
+```
+src/
+  core.js       ← parseTranscript, parseCoreProgram, analyze (pure, testable)
+  render.js     ← DOM annotation & rendering (browser-only)
+  ui.js         ← launcher panel, page detection, runAnnotation
+  main.js       ← entry point
+test/
+  run-test.js   ← Node.js test harness (jsdom)
+  fixtures/     ← catalog.html (auto-fetched), transcript-*.txt, *.expected.json
+build.js        ← esbuild config → dist/extension.js + dist/bookmarklet.js
+manifest.json   ← WebExtension manifest (Chrome, Edge, Firefox)
+script.js       ← legacy monolith (kept for reference, not used by build)
+```

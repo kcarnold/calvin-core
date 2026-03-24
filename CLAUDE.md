@@ -1,6 +1,25 @@
 # Calvin Core Annotator
 
-Console script that annotates https://catalog.calvin.edu/content.php?catoid=24&navoid=780 with a student's transcript data to show core program fulfillment status.
+Browser extension / bookmarklet that annotates https://catalog.calvin.edu/content.php?catoid=24&navoid=780 with a student's transcript data to show core program fulfillment status.
+
+## Project Structure
+
+- `src/core.js` — Pure logic: `parseTranscript`, `parseCoreProgram(root)`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
+- `src/render.js` — DOM rendering: injects styles, badges, TOC, annotations. Browser-only.
+- `src/ui.js` — Launcher panel, paste handler, `main()` entry. Browser-only.
+- `src/main.js` — Entry point (imports ui.js, calls `main()`).
+- `build.js` — esbuild: bundles to `dist/extension.js` (IIFE) and `dist/bookmarklet.js` (IIFE, minified).
+- `test/run-test.js` — Node.js test harness using jsdom. Runs `parseTranscript → parseCoreProgram → analyze` against transcript fixtures.
+- `test/fixtures/` — Gitignored. Contains `catalog.html` (auto-fetched), `transcript-*.txt` (student data), `*.expected.json` (snapshots).
+- `script.js` — Legacy monolith (kept for reference).
+
+## Build & Test
+
+```sh
+npm install
+npm run build   # → dist/extension.js + dist/bookmarklet.js
+npm test         # runs test/run-test.js against all transcript-*.txt fixtures
+```
 
 ## Target Page DOM
 
