@@ -261,6 +261,13 @@ export function render({ results, kuSummary, transcript }) {
       }
     }
 
+    if (r.type === 'category' && r.name === 'World Languages I') {
+      const note = document.createElement('span');
+      note.className = 'ca-hours-note';
+      note.textContent = '\u2139\uFE0F World Languages I may already be satisfied through qualifying high school language coursework/exemption. Confirm with your advisor or the Registrar if this applies to you.';
+      block.querySelector('p')?.after(note);
+    }
+
     if (r.reqType === 'hour-range' && (r.hoursEarned > 0 || r.maxPerDiscipline)) {
       const note = document.createElement('span');
       note.className = 'ca-hours-note';
