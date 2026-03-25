@@ -175,8 +175,7 @@
   <main>
     <section class="hero">
       <span class="eyebrow">Calvin Core Annotator</span>
-      <h1>Install the bookmarklet once, then update it by pushing code.</h1>
-      <p class="lede">This bookmarklet loads the latest annotator script from this GitHub Pages site each time you click it on the Calvin catalog core-program page.</p>
+      <p class="lede">This bookmarklet loads the latest annotator script each time you click it on the Calvin catalog core-program page.</p>
       <div class="actions">
         <a class="button bookmarklet-link" href="javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/bookmarklet.js';const id='ca-bookmarklet-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();">Calvin Core Annotator</a>
         <a class="button secondary" href="https://catalog.calvin.edu/content.php?catoid=24&amp;navoid=780">Open the catalog page</a>
@@ -209,8 +208,6 @@
     <section class="card">
       <h2>Notes</h2>
       <ul>
-        <li>Because the bookmarklet fetches <code>bookmarklet.js</code> from this site, code updates take effect after you deploy GitHub Pages. The bookmark itself does not need to change.</li>
-        <li>The browser extension path still works for local testing.</li>
         <li>This tool is unofficial and should be treated as a planning aid, not an official degree audit.</li>
       </ul>
       <p class="small"><a href="https://github.com/kcarnold/calvin-core">Source on GitHub</a></p>
