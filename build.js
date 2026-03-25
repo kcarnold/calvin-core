@@ -14,7 +14,7 @@ await esbuild.build({
   format: 'iife',
 });
 
-// Bookmarklet (same bundle, minified)
+// Local bookmarklet bundle (same app bundle, minified)
 await esbuild.build({
   ...common,
   entryPoints: ['src/main.js'],
@@ -24,4 +24,14 @@ await esbuild.build({
   sourcemap: false,
 });
 
-console.log('Built dist/extension.js and dist/bookmarklet.js');
+// Hosted bookmarklet bundle for GitHub Pages.
+await esbuild.build({
+  ...common,
+  entryPoints: ['src/bookmarklet-entry.js'],
+  outfile: 'docs/bookmarklet.js',
+  format: 'iife',
+  minify: true,
+  sourcemap: false,
+});
+
+console.log('Built dist/extension.js, dist/bookmarklet.js, and docs/bookmarklet.js');

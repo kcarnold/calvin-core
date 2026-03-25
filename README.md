@@ -42,7 +42,7 @@ Firefox temporary add-ons unload when the browser restarts, so that path is best
 
 ```sh
 npm install
-npm run build   # → dist/extension.js + dist/bookmarklet.js
+npm run build   # → dist/extension.js + dist/bookmarklet.js + docs/bookmarklet.js
 npm test         # run test harness against transcript fixtures
 ```
 
@@ -65,7 +65,7 @@ The test harness auto-fetches the catalog HTML on first run.
 
 ## Bookmarklet
 
-After `npm run build`, wrap `dist/bookmarklet.js` in a `javascript:` URL:
+For local testing, after `npm run build`, wrap `dist/bookmarklet.js` in a `javascript:` URL:
 
 ```sh
 echo "javascript:$(cat dist/bookmarklet.js)" | pbcopy
@@ -73,7 +73,16 @@ echo "javascript:$(cat dist/bookmarklet.js)" | pbcopy
 
 Paste as a bookmark's URL. Click it on the catalog page.
 
+For a hosted bookmarklet that always loads the latest deployed bundle, publish the `docs/` directory with GitHub Pages. The install page lives at:
+
+```text
+https://kcarnold.github.io/calvin-core/
+```
+
+The live bookmarklet there injects `https://kcarnold.github.io/calvin-core/bookmarklet.js`, so pushing a new `docs/bookmarklet.js` updates the bookmarklet behavior without asking users to replace the bookmark.
+
 ## Files
+  bookmarklet-entry.js ← hosted bookmarklet entry point
 
 ```
 src/
@@ -81,6 +90,7 @@ src/
   render.js     ← DOM annotation & rendering (browser-only)
   ui.js         ← launcher panel, page detection, runAnnotation
   main.js       ← entry point
+docs/           ← GitHub Pages install page + hosted bookmarklet bundle
 test/
   run-test.js   ← Node.js test harness (jsdom)
   fixtures/     ← catalog.html (auto-fetched), transcript-*.txt, *.expected.json
