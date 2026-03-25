@@ -127,7 +127,7 @@ export function render({ results, kuSummary, transcript }) {
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.takenBg};border-color:${COLORS.taken}"></div>Taken</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:linear-gradient(90deg,${COLORS.takenBg} 70%,${COLORS.doubleCountBg});border-color:${COLORS.taken}"></div>Taken (multi-section)</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.doubleCountBg};border-color:${COLORS.doubleCount}"></div>Double-count opportunity</div>
-    <div class="ca-legend-item"><div class="ca-legend-swatch" style="border-left:3px solid ${COLORS.opportunity}"></div>Available</div>
+    <div class="ca-legend-item"><div class="ca-legend-swatch" style="border-left:3px solid ${COLORS.opportunity}"></div>Open opportunities</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:#eee;opacity:0.35"></div>Maxed / satisfied</div>
   `;
 
@@ -147,10 +147,10 @@ export function render({ results, kuSummary, transcript }) {
       <span class="label">${n}</span><br><span class="value">${info.effective} hrs</span>${capNote}</a>`;
   }
   panel.innerHTML = `
-    <h3>\u{1F4CA} Core Program Audit</h3>
+    <h3>\u{1F4CA} Core Opportunities</h3>
     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
-      <span>K&U Hours: <strong style="color:${hColor}">${kuSummary.totalHours} / ${kuSummary.requiredHours}</strong></span>
-      <span>K&U Categories: <strong style="color:${cColor}">${kuSummary.categoriesUsed} / ${kuSummary.requiredCategories}</strong></span>
+      <span>Progress (K&U Hours): <strong style="color:${hColor}">${kuSummary.totalHours} / ${kuSummary.requiredHours}</strong></span>
+      <span>Progress (K&U Categories): <strong style="color:${cColor}">${kuSummary.categoriesUsed} / ${kuSummary.requiredCategories}</strong></span>
     </div>
     <div class="ca-progress-bar"><div class="ca-progress-fill" style="width:${pct}%;background:${hColor}"></div>
       <div class="ca-progress-label">${pct}%</div></div>
@@ -237,7 +237,7 @@ export function render({ results, kuSummary, transcript }) {
       else if (r.status === 'satisfied') { badge.className += ' ca-badge-satisfied'; badge.textContent = 'MIN MET'; }
       else if (r.status === 'optional-available') { badge.className += ' ca-badge-optional'; badge.textContent = 'OPTIONAL'; }
       else { badge.className += ' ca-badge-incomplete';
-        badge.textContent = r.reqType === 'hour-range' ? r.hoursEarned + '/' + (r.minHours || 0) + '+ hrs' : 'NEEDED'; }
+        badge.textContent = r.reqType === 'hour-range' ? r.hoursEarned + '/' + (r.minHours || 0) + '+ hrs' : 'AREAS TO EXPLORE'; }
       heading.appendChild(badge);
     }
 

@@ -123,7 +123,7 @@ function isSupportedCatalogPage() {
 function runAnnotation(text) {
   const normalized = (text || '').trim();
   if (normalized.length === 0) {
-    setStatus('Paste your Workday Academic History transcript to run the audit.', null);
+    setStatus('Paste your Workday Academic History transcript to see your core opportunities.', null);
     return;
   }
 
@@ -138,7 +138,7 @@ function runAnnotation(text) {
   const analysis = analyze(categories, transcript);
   render(analysis);
   setStatus(
-    'Audit updated: ' + transcript.length + ' courses, ' + analysis.kuSummary.totalHours + '/' + analysis.kuSummary.requiredHours
+    'Progress updated: ' + transcript.length + ' courses, ' + analysis.kuSummary.totalHours + '/' + analysis.kuSummary.requiredHours
       + ' K&U hours, ' + analysis.kuSummary.categoriesUsed + '/' + analysis.kuSummary.requiredCategories + ' K&U categories.',
     'success'
   );
@@ -158,12 +158,12 @@ function mountLauncher() {
   panel.innerHTML = `
     <details id="${UI_IDS.details}">
       <summary>Calvin Core Annotator</summary>
-      <p>Open Workday, go to Academic Record, open Academic History, select all, copy, then paste here. Pasting runs the audit immediately.</p>
+      <p>Open Workday, go to Academic Record, open Academic History, select all, copy, then paste here. Pasting shows opportunities immediately.</p>
       <textarea id="${UI_IDS.textarea}" spellcheck="false" placeholder="Paste Workday Academic History here"></textarea>
       <div class="ca-launcher-actions">
-        <button type="button" class="ca-launcher-button" data-action="analyze">Analyze pasted transcript</button>
+        <button type="button" class="ca-launcher-button" data-action="analyze">Show core opportunities</button>
         <button type="button" class="ca-launcher-button ca-launcher-button-secondary" data-action="reset">Reset annotations</button>
-        <span id="${UI_IDS.status}">Paste your Workday Academic History transcript to run the audit.</span>
+        <span id="${UI_IDS.status}">Paste your Workday Academic History transcript to see your core opportunities.</span>
       </div>
     </details>`;
   firstCore.parentElement.insertBefore(panel, firstCore);
