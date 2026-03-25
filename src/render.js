@@ -19,7 +19,23 @@ export function clearRenderedState() {
   });
 }
 
-export function render({ results, kuSummary, transcript }) {
+function attachPlanToggle(li, courseCode, isPlanned, onTogglePlanned) {
+  if (typeof onTogglePlanned !== 'function') return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ca-plan-toggle' + (isPlanned ? ' ca-plan-toggle-on' : '');
+  btn.textContent = isPlanned ? 'Planned' : '+ Plan';
+  btn.title = isPlanned ? 'Remove planned course' : 'Mark as planned course';
+  btn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onTogglePlanned(courseCode);
+  });
+  li.appendChild(btn);
+}
+
+export function render({ results, kuSummary, transcript, plannedCourses }, options = {}) {
+  const onTogglePlanned = options.onTogglePlanned;
   clearRenderedState();
 
   // ===== STYLES =====
@@ -42,7 +58,18 @@ export function render({ results, kuSummary, transcript }) {
       border-left:3px solid ${COLORS.taken}!important; padding-left:6px; }
     .ca-course-taken-multi > a:first-of-type { color:${COLORS.taken}!important; font-weight:bold; }
     .ca-course-taken-multi::after { content:attr(data-ca-note); font-size:11px; color:${COLORS.taken}; margin-left:8px; font-style:italic; }
+    .ca-course-planned { background:#fff7e9!important; border-left:3px solid #d97706!important; padding-left:6px; }
+    .ca-course-planned > a:first-of-type { color:#9a5a00!important; font-weight:600; }
+    .ca-course-planned::after { content:attr(data-ca-note); font-size:11px; color:#9a5a00; margin-left:8px; font-style:italic; }
+    .ca-course-planned-multi { background:linear-gradient(90deg, #fff7e9 70%, ${COLORS.doubleCountBg})!important;
+      border-left:3px solid #d97706!important; padding-left:6px; }
+    .ca-course-planned-multi > a:first-of-type { color:#9a5a00!important; font-weight:600; }
+    .ca-course-planned-multi::after { content:attr(data-ca-note); font-size:11px; color:#9a5a00; margin-left:8px; font-style:italic; }
     .ca-course-maxed { opacity:0.35; }
+    .ca-plan-toggle { margin-left:8px; padding:1px 7px; border-radius:999px; border:1px solid #c67b00;
+      background:#fff; color:#9a5a00; font-size:10px; font-weight:700; cursor:pointer; vertical-align:middle; }
+    .ca-plan-toggle:hover { background:#fff6dd; }
+    .ca-plan-toggle.ca-plan-toggle-on { background:#fff1cc; border-color:#b86d00; color:#7d4700; }
     .ca-category-complete { opacity:0.45; transition:opacity 0.2s; }
     .ca-category-complete:hover { opacity:1; }
     .ca-hours-note { font-size:11px; color:#555; margin:2px 0 6px 0; padding:3px 10px;
@@ -126,6 +153,7 @@ export function render({ results, kuSummary, transcript }) {
   legend.innerHTML = `
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.takenBg};border-color:${COLORS.taken}"></div>Taken</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:linear-gradient(90deg,${COLORS.takenBg} 70%,${COLORS.doubleCountBg});border-color:${COLORS.taken}"></div>Taken (multi-section)</div>
+    <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:#fff7e9;border-color:#d97706"></div>Planned</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.doubleCountBg};border-color:${COLORS.doubleCount}"></div>Double-count opportunity</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="border-left:3px solid ${COLORS.opportunity}"></div>Open opportunities</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:#eee;opacity:0.35"></div>Maxed / satisfied</div>
@@ -152,6 +180,7 @@ export function render({ results, kuSummary, transcript }) {
       <span>Progress (K&U Hours): <strong style="color:${hColor}">${kuSummary.totalHours} / ${kuSummary.requiredHours}</strong></span>
       <span>Progress (K&U Categories): <strong style="color:${cColor}">${kuSummary.categoriesUsed} / ${kuSummary.requiredCategories}</strong></span>
     </div>
+    <div style="font-size:12px;color:#d5dbe5;margin-bottom:6px">Planned courses: <strong>${(plannedCourses || []).length}</strong> (do not count toward completed hours until taken)</div>
     <div class="ca-progress-bar"><div class="ca-progress-fill" style="width:${pct}%;background:${hColor}"></div>
       <div class="ca-progress-label">${pct}%</div></div>
     <div class="ca-summary-grid">${gridHTML}</div>`;
@@ -299,6 +328,14 @@ export function render({ results, kuSummary, transcript }) {
           li.classList.add('ca-course-taken');
           li.setAttribute('data-ca-note', '\u2713 ' + c.grade + ' (' + c.hours + 'h)');
         }
+      } else if (c.isPlanned) {
+        if (c.isMultiSection) {
+          li.classList.add('ca-course-planned-multi');
+          li.setAttribute('data-ca-note', 'Planned \u21C9 Also: ' + c.otherCategories.join(', '));
+        } else {
+          li.classList.add('ca-course-planned');
+          li.setAttribute('data-ca-note', 'Planned');
+        }
       } else if (r.status === 'complete' && r.type !== 'tag') {
         if (c.isMultiSection) {
           li.classList.add('ca-course-double-count');
@@ -312,6 +349,8 @@ export function render({ results, kuSummary, transcript }) {
       } else if (r.status !== 'complete') {
         li.classList.add('ca-course-opportunity');
       } else li.classList.add('ca-course-maxed');
+
+      if (!c.isTaken) attachPlanToggle(li, c.code, c.isPlanned, onTogglePlanned);
     }
   }
 

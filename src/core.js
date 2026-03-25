@@ -112,9 +112,18 @@ export const KU_NAMES = [
   'Mathematical Sciences', 'Natural Sciences', 'Social and Behavioral Sciences'
 ];
 
-export function analyze(cats, transcript) {
+function normalizeCourseCode(code) {
+  return (code || '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+export function analyze(cats, transcript, options = {}) {
   const takenSet = new Set(transcript.map(c => c.code));
   const takenMap = {}; transcript.forEach(c => { takenMap[c.code] = c; });
+  const plannedSet = new Set(
+    (options.plannedCourses || [])
+      .map(code => normalizeCourseCode(code))
+      .filter(code => code.length > 0 && !takenSet.has(code))
+  );
   const c2c = {};
   for (const cat of cats) {
     if (!cat.courses || !cat.name) continue;
@@ -164,14 +173,23 @@ export function analyze(cats, transcript) {
     }
     const courseAnnotations = cat.courses.map(c => {
       const isTaken = takenSet.has(c.code);
+      const isPlanned = !isTaken && plannedSet.has(c.code);
       const allCats = c2c[c.code] || [];
       const otherCats = allCats.filter(n => n !== cat.name);
       return { ...c, isTaken, isMultiSection: allCats.length > 1, otherCategories: otherCats,
+        isPlanned,
         isMaxedDiscipline: maxedD.has(c.subDiscipline || 'General') && !isTaken,
         grade: isTaken ? (takenMap[c.code]?.grade || '') : '', hours: isTaken ? (takenMap[c.code]?.hours || 0) : 0 };
     });
+    const plannedCount = courseAnnotations.filter(c => c.isPlanned).length;
     results.push({ ...cat, status, hoursEarned: hrsRaw, hoursEffective: hrsEffective,
-      hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length, courseAnnotations });
+      hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length,
+      plannedCount, courseAnnotations });
   }
-  return { results, transcript, kuSummary: { totalHours: kuTotal, requiredHours: 26, categoriesUsed: kuCount, requiredCategories: 5, hoursByCategory: kuH } };
+  return {
+    results,
+    transcript,
+    plannedCourses: Array.from(plannedSet),
+    kuSummary: { totalHours: kuTotal, requiredHours: 26, categoriesUsed: kuCount, requiredCategories: 5, hoursByCategory: kuH }
+  };
 }

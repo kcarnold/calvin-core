@@ -10,6 +10,8 @@ const UI_IDS = {
   styles: 'ca-launcher-styles',
 };
 
+const plannedCourses = new Set();
+
 function ensureLauncherStyles() {
   if (document.getElementById(UI_IDS.styles)) return;
   const style = document.createElement('style');
@@ -135,15 +137,26 @@ function runAnnotation(text) {
   }
 
   const categories = parseCoreProgram();
-  const analysis = analyze(categories, transcript);
-  render(analysis);
+  const analysis = analyze(categories, transcript, { plannedCourses: Array.from(plannedCourses) });
+  const appliedPlanned = new Set(analysis.plannedCourses || []);
+  plannedCourses.clear();
+  for (const code of appliedPlanned) plannedCourses.add(code);
+  render(analysis, {
+    onTogglePlanned: (courseCode) => {
+      if (plannedCourses.has(courseCode)) plannedCourses.delete(courseCode);
+      else plannedCourses.add(courseCode);
+      runAnnotation(text);
+    }
+  });
   setStatus(
     'Progress updated: ' + transcript.length + ' courses, ' + analysis.kuSummary.totalHours + '/' + analysis.kuSummary.requiredHours
-      + ' K&U hours, ' + analysis.kuSummary.categoriesUsed + '/' + analysis.kuSummary.requiredCategories + ' K&U categories.',
+      + ' K&U hours, ' + analysis.kuSummary.categoriesUsed + '/' + analysis.kuSummary.requiredCategories + ' K&U categories, '
+      + plannedCourses.size + ' planned.',
     'success'
   );
   console.log('[Core Annotator]', transcript.length, 'courses:', transcript.map(c => c.code + '(' + c.hours + 'h)'));
   console.log('[Core Annotator] K&U:', analysis.kuSummary);
+  if (plannedCourses.size > 0) console.log('[Core Annotator] Planned:', Array.from(plannedCourses));
 }
 
 function mountLauncher() {
@@ -176,6 +189,7 @@ function mountLauncher() {
     if (button.dataset.action === 'analyze') runAnnotation(textarea.value);
     if (button.dataset.action === 'reset') {
       textarea.value = '';
+      plannedCourses.clear();
       clearRenderedState();
       setStatus('Annotations cleared.', null);
       details.open = false;
