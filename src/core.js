@@ -150,6 +150,18 @@ export function analyze(cats, transcript) {
       kuH[cat.name] = { raw: hrsRaw, effective: hrsEffective, max: cat.maxHours };
       kuTotal += hrsEffective; if (hrsRaw > 0) kuCount++;
     }
+    // Build sub-discipline details for categories with per-discipline limits
+    let subDisciplines = null;
+    if (cat.maxPerDiscipline && takenHere.length > 0) {
+      subDisciplines = {};
+      const allSubNames = new Set(cat.courses.map(c => c.subDiscipline).filter(Boolean));
+      for (const dName of allSubNames) {
+        const earned = hByD[dName] || 0;
+        const isMaxed = maxedD.has(dName);
+        const untakenCount = cat.courses.filter(c => c.subDiscipline === dName && !takenSet.has(c.code)).length;
+        subDisciplines[dName] = { hoursEarned: earned, cap: cat.maxPerDiscipline, isMaxed, untakenCount };
+      }
+    }
     const courseAnnotations = cat.courses.map(c => {
       const isTaken = takenSet.has(c.code);
       const allCats = c2c[c.code] || [];
@@ -159,7 +171,7 @@ export function analyze(cats, transcript) {
         grade: isTaken ? (takenMap[c.code]?.grade || '') : '', hours: isTaken ? (takenMap[c.code]?.hours || 0) : 0 };
     });
     results.push({ ...cat, status, hoursEarned: hrsRaw, hoursEffective: hrsEffective,
-      hoursByDiscipline: hByD, maxedDisciplines: maxedD, takenCount: takenHere.length, courseAnnotations });
+      hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length, courseAnnotations });
   }
   return { results, transcript, kuSummary: { totalHours: kuTotal, requiredHours: 26, categoriesUsed: kuCount, requiredCategories: 5, hoursByCategory: kuH } };
 }

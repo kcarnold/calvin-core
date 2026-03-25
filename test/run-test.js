@@ -52,12 +52,14 @@ function summarize(analysis) {
   const categories = {};
   for (const r of results) {
     if (r.status === 'header' || r.status === 'info-only') continue;
-    categories[r.name] = {
+    const entry = {
       status: r.status,
       hoursEarned: r.hoursEarned ?? null,
       hoursEffective: r.hoursEffective ?? null,
       takenCount: r.takenCount ?? 0,
     };
+    if (r.subDisciplines) entry.subDisciplines = r.subDisciplines;
+    categories[r.name] = entry;
   }
   return {
     kuSummary: {

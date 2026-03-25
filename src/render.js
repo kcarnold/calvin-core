@@ -241,12 +241,22 @@ export function render({ results, kuSummary, transcript }) {
       heading.appendChild(badge);
     }
 
-    if (Array.isArray(r.subDisciplineElements)) {
+    if (Array.isArray(r.subDisciplineElements) && r.subDisciplines) {
       for (const sub of r.subDisciplineElements) {
-        if (!r.maxedDisciplines.has(sub.name)) continue;
+        const info = r.subDisciplines[sub.name];
+        if (!info) continue;
         const badge = document.createElement('span');
-        badge.className = 'ca-badge ca-badge-complete';
-        badge.textContent = '\u2713 COMPLETE';
+        badge.className = 'ca-badge';
+        if (info.isMaxed) {
+          badge.className += ' ca-badge-complete';
+          badge.textContent = '\u2713 ' + info.hoursEarned + 'h/' + info.cap + 'h';
+        } else if (info.hoursEarned > 0) {
+          badge.className += ' ca-badge-incomplete';
+          badge.textContent = info.hoursEarned + 'h/' + info.cap + 'h max';
+        } else {
+          badge.className += ' ca-badge-optional';
+          badge.textContent = '0h \u2014 up to ' + info.cap + 'h';
+        }
         sub.element.appendChild(badge);
       }
     }
