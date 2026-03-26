@@ -4,6 +4,8 @@ const COLORS = {
   taken: '#2d8a4e', takenBg: '#e6f7ed',
   opportunity: '#b8860b', opportunityBg: '#fff8dc',
   doubleCount: '#1a73e8', doubleCountBg: '#e8f0fe',
+  inProgress: '#5b21b6', inProgressBg: '#ede9fe',
+  transfer: '#0e7490', transferBg: '#ecfeff',
 };
 
 export function clearRenderedState() {
@@ -65,6 +67,14 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
       border-left:3px solid #d97706!important; padding-left:6px; }
     .ca-course-planned-multi > a:first-of-type { color:#9a5a00!important; font-weight:600; }
     .ca-course-planned-multi::after { content:attr(data-ca-note); font-size:11px; color:#9a5a00; margin-left:8px; font-style:italic; }
+    .ca-course-in-progress { background:${COLORS.inProgressBg}!important; border-left:3px solid ${COLORS.inProgress}!important; padding-left:6px; }
+    .ca-course-in-progress > a:first-of-type { color:${COLORS.inProgress}!important; font-weight:bold; }
+    .ca-course-in-progress::after { content:attr(data-ca-note); font-size:11px; color:${COLORS.inProgress}; margin-left:8px; font-style:italic; }
+    .ca-course-transfer { background:${COLORS.transferBg}!important; border-left:3px solid ${COLORS.transfer}!important; padding-left:6px; }
+    .ca-course-transfer > a:first-of-type { color:${COLORS.transfer}!important; font-weight:bold; }
+    .ca-course-transfer::after { content:attr(data-ca-note); font-size:11px; color:${COLORS.transfer}; margin-left:8px; font-style:italic; }
+    .ca-badge-in-progress { background:${COLORS.inProgressBg}; color:${COLORS.inProgress}; border:1px solid ${COLORS.inProgress}; }
+    .ca-badge-exempt { background:#f0fdf4; color:#166534; border:1px solid #86efac; font-style:italic; }
     .ca-course-maxed { opacity:0.35; }
     .ca-plan-toggle { margin-left:8px; padding:1px 7px; border-radius:999px; border:1px solid #c67b00;
       background:#fff; color:#9a5a00; font-size:10px; font-weight:700; cursor:pointer; vertical-align:middle; }
@@ -156,6 +166,8 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:#fff7e9;border-color:#d97706"></div>Planned</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.doubleCountBg};border-color:${COLORS.doubleCount}"></div>Double-count opportunity</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="border-left:3px solid ${COLORS.opportunity}"></div>Open opportunities</div>
+    <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.inProgressBg};border-color:${COLORS.inProgress}"></div>In Progress</div>
+    <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:${COLORS.transferBg};border-color:${COLORS.transfer}"></div>Transfer Credit</div>
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:#eee;opacity:0.35"></div>Maxed / satisfied</div>
   `;
 
@@ -262,7 +274,8 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
     if (heading) {
       const badge = document.createElement('span');
       badge.className = 'ca-badge';
-      if (r.status === 'complete') { badge.className += ' ca-badge-complete'; badge.textContent = '\u2713 COMPLETE'; }
+      if (r.isExempt) { badge.className += ' ca-badge-exempt'; badge.textContent = '\u2713 EXEMPT'; }
+      else if (r.status === 'complete') { badge.className += ' ca-badge-complete'; badge.textContent = '\u2713 COMPLETE'; }
       else if (r.status === 'satisfied') { badge.className += ' ca-badge-satisfied'; badge.textContent = 'MIN MET'; }
       else if (r.status === 'optional-available') { badge.className += ' ca-badge-optional'; badge.textContent = 'OPTIONAL'; }
       else { badge.className += ' ca-badge-incomplete';
@@ -320,7 +333,13 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
     for (const c of r.courseAnnotations) {
       if (!c.element) continue;
       const li = c.element;
-      if (c.isTaken) {
+      if (c.isInProgress) {
+        li.classList.add('ca-course-in-progress');
+        li.setAttribute('data-ca-note', '\u23F3 In Progress (' + c.hours + 'h)');
+      } else if (c.isTransfer) {
+        li.classList.add('ca-course-transfer');
+        li.setAttribute('data-ca-note', '\u2713 Transfer (' + c.hours + 'h)');
+      } else if (c.isTaken) {
         if (c.isMultiSection) {
           li.classList.add('ca-course-taken-multi');
           li.setAttribute('data-ca-note', '\u2713 ' + c.grade + ' (' + c.hours + 'h) \u21C9 Also: ' + c.otherCategories.join(', '));
@@ -350,7 +369,7 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
         li.classList.add('ca-course-opportunity');
       } else li.classList.add('ca-course-maxed');
 
-      if (!c.isTaken) attachPlanToggle(li, c.code, c.isPlanned, onTogglePlanned);
+      if (!c.isTaken && !c.isInProgress && !c.isTransfer) attachPlanToggle(li, c.code, c.isPlanned, onTogglePlanned);
     }
   }
 
@@ -373,7 +392,9 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
       const catsCell = cats.length > 0
         ? `<span class="ca-transcript-cats">${cats.join(', ')}</span>`
         : `<span class="ca-transcript-none">not in core lists</span>`;
-      rows += `<tr><td><strong>${c.code}</strong></td><td>${c.title}</td><td>${c.grade}</td><td>${c.hours}h</td><td>${catsCell}</td></tr>`;
+      const statusLabel = c.status === 'in-progress' ? ' <span style="color:' + COLORS.inProgress + '">⏳</span>'
+        : c.status === 'transfer' ? ' <span style="color:' + COLORS.transfer + '">↗</span>' : '';
+      rows += `<tr><td><strong>${c.code}</strong>${statusLabel}</td><td>${c.title}</td><td>${c.grade || '—'}</td><td>${c.hours}h</td><td>${catsCell}</td></tr>`;
     }
     section.innerHTML = `<h3>\u{1F4CB} Transcript Reference (${transcript.length} courses)</h3>
       <table class="ca-transcript-table">

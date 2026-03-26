@@ -20,7 +20,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
-import { parseTranscript, parseCoreProgram, analyze, KU_NAMES } from '../src/core.js';
+import { parseTranscript, parseProgress, detectInputFormat, parseCoreProgram, analyze, KU_NAMES } from '../src/core.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const FIXTURES = join(__dirname, 'fixtures');
@@ -111,25 +111,30 @@ async function main() {
   const categories = parseCoreProgram(doc);
 
   // Discover test transcripts
-  let transcriptFiles = files;
-  if (transcriptFiles.length === 0) {
+  let transcriptFiles = files.filter(f => basename(f).startsWith('transcript-'));
+  let progressFiles = files.filter(f => basename(f).startsWith('progress-'));
+  if (files.length === 0) {
     if (!existsSync(FIXTURES)) {
       console.error(`No fixtures directory. Create test/fixtures/ and add transcript-*.txt files.`);
       process.exit(1);
     }
-    transcriptFiles = readdirSync(FIXTURES)
+    const allFiles = readdirSync(FIXTURES);
+    transcriptFiles = allFiles
       .filter(f => f.startsWith('transcript-') && f.endsWith('.txt'))
+      .map(f => join(FIXTURES, f));
+    progressFiles = allFiles
+      .filter(f => f.startsWith('progress-') && f.endsWith('.txt'))
       .map(f => join(FIXTURES, f));
   }
 
-  if (transcriptFiles.length === 0) {
-    console.error('No transcript files found. Add .txt files to test/fixtures/ or pass paths as arguments.');
-    console.error('Example: echo "your transcript" > test/fixtures/transcript-sample.txt');
+  if (transcriptFiles.length === 0 && progressFiles.length === 0) {
+    console.error('No test files found. Add .txt files to test/fixtures/ or pass paths as arguments.');
     process.exit(1);
   }
 
-  let passed = 0, failed = 0;
+  let passed = 0, failed = 0, unsnapshotted = 0;
 
+  // ---- Transcript tests (existing) ----
   for (const file of transcriptFiles) {
     const name = basename(file, '.txt');
     const text = readFileSync(file, 'utf-8');
@@ -151,14 +156,110 @@ async function main() {
         failed++;
       }
     } else {
-      // No expected file — print summary for review / snapshot creation
       console.log(`? ${name} — no expected file, printing actual output:`);
       console.log(JSON.stringify(actual, null, 2));
       console.error(`  To snapshot: node test/run-test.js ${file} > ${expectedPath}`);
+      unsnapshotted++;
     }
   }
 
-  console.log(`\n${passed} passed, ${failed} failed, ${transcriptFiles.length - passed - failed} unsnapshotted`);
+  // ---- Progress format tests ----
+  for (const file of progressFiles) {
+    const name = basename(file, '.txt');
+    const text = readFileSync(file, 'utf-8');
+
+    // Test 1: detectInputFormat identifies this as progress
+    const fmt = detectInputFormat(text);
+    if (fmt !== 'progress') {
+      console.log(`✗ ${name} detectInputFormat: expected 'progress', got '${fmt}'`);
+      failed++;
+    } else {
+      console.log(`✓ ${name} detectInputFormat → 'progress'`);
+      passed++;
+    }
+
+    // Test 2: parseProgress extracts courses
+    const { courses, exemptions, overrides } = parseProgress(text);
+    const realCourses = courses.filter(c => c.code !== null);
+    const exemptionEntries = courses.filter(c => c.status === 'exemption');
+    const inProgressCourses = realCourses.filter(c => c.status === 'in-progress');
+    const transferCourses = realCourses.filter(c => c.status === 'transfer');
+    const completedCourses = realCourses.filter(c => c.status === 'completed');
+
+    console.log(`  parseProgress: ${realCourses.length} courses, ${inProgressCourses.length} in-progress, ${transferCourses.length} transfer, ${completedCourses.length} completed`);
+    console.log(`  exemptions: ${exemptions.length}, overrides: ${overrides.size}`);
+
+    // Test 3: Specific assertions for the example fixture
+    const coursesByCode = {};
+    for (const c of courses) { if (c.code) coursesByCode[c.code] = c; }
+
+    const assertions = [
+      // In-progress courses detected
+      [coursesByCode['REL 212']?.status, 'in-progress', 'REL 212 should be in-progress'],
+      [coursesByCode['ECON 221']?.status, 'in-progress', 'ECON 221 should be in-progress'],
+      [coursesByCode['CS 384']?.status, 'in-progress', 'CS 384 should be in-progress'],
+      // Transfer credit detected
+      [coursesByCode['PHYS 222']?.status, 'transfer', 'PHYS 222 should be transfer'],
+      [coursesByCode['PHYS 222']?.hours, 4, 'PHYS 222 should have 4 hours'],
+      [coursesByCode['PHYS 222']?.grade, 'CR', 'PHYS 222 grade should be CR'],
+      // Regular completed course
+      [coursesByCode['CORE 100']?.status, 'completed', 'CORE 100 should be completed'],
+      [coursesByCode['CORE 100']?.hours, 2, 'CORE 100 should have 2 hours'],
+      // Lab merging: CS 108L (1h) should merge into CS 108 (3h) = 4h total
+      [coursesByCode['CS 108']?.hours, 4, 'CS 108 should have 4 hours (3 + 1 lab)'],
+      [coursesByCode['CS 108L'], undefined, 'CS 108L should not exist (merged into CS 108)'],
+      // Lab merging: CS 112L (1h) should merge into CS 112 (3h) = 4h total
+      [coursesByCode['CS 112']?.hours, 4, 'CS 112 should have 4 hours (3 + 1 lab)'],
+      // Exemption detected
+      [exemptions.length >= 1, true, 'Should have at least 1 exemption'],
+      [exemptions[0]?.target, 'World Languages I', 'Language Exemption should target World Languages I'],
+      // Override detected
+      [overrides.has('Knowledge and Understanding - minimum 26 hours'), true, 'Should detect K&U override'],
+      // Deduplication: courses appearing in multiple sections should be deduplicated
+      [realCourses.filter(c => c.code === 'CS 108').length, 1, 'CS 108 should appear only once (deduplicated)'],
+    ];
+
+    for (const [actual, expected, label] of assertions) {
+      if (actual === expected) {
+        console.log(`  ✓ ${label}`);
+        passed++;
+      } else {
+        console.log(`  ✗ ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+        failed++;
+      }
+    }
+
+    // Test 4: Feed into analyze() and check exemption handling
+    const analysis = analyze(categories, courses);
+    const wl1 = analysis.results.find(r => r.name === 'World Languages I');
+    if (wl1) {
+      if (wl1.status === 'complete' && wl1.isExempt) {
+        console.log(`  ✓ World Languages I marked complete via exemption`);
+        passed++;
+      } else {
+        console.log(`  ✗ World Languages I: expected complete+exempt, got status='${wl1.status}', isExempt=${wl1.isExempt}`);
+        failed++;
+      }
+    } else {
+      console.log(`  ✗ World Languages I category not found in analysis results`);
+      failed++;
+    }
+
+    // Test 5: In-progress courses contribute hours
+    const kuResult = analysis.results.find(r => r.name && r.courseAnnotations?.some(c => c.code === 'CS 384'));
+    if (kuResult) {
+      const cs384ann = kuResult.courseAnnotations.find(c => c.code === 'CS 384');
+      if (cs384ann?.isInProgress) {
+        console.log(`  ✓ CS 384 annotated as in-progress in analysis`);
+        passed++;
+      } else {
+        console.log(`  ✗ CS 384 should be annotated as in-progress`);
+        failed++;
+      }
+    }
+  }
+
+  console.log(`\n${passed} passed, ${failed} failed, ${unsnapshotted} unsnapshotted`);
   if (failed > 0) process.exit(1);
 }
 
