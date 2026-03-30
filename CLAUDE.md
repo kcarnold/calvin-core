@@ -43,6 +43,22 @@ npm test         # runs test/run-test.js against all transcript-*.txt fixtures
 - **Engaged Citizenship tags**: pick-one, may overlap with any other category. Tags use `<h4>` not `<h3>`.
 - **World Languages II**: 0–4h minimum means it's optional (status "optional-available" when 0h earned).
 
+## Status Values
+
+### Category result statuses (from `analyze()`)
+- `header` — section-level heading (e.g., "Foundations"); not a real requirement; skipped in tests and rendering.
+- `info-only` — category has no courses listed (nothing to fulfill); skipped in tests.
+- `complete` — all requirements satisfied. Pick-one: ≥1 course taken. Hour-range: min hours met and no more can be added (discipline cap reached or maxHours hit). Badge: "✓ COMPLETE"; block fades to 0.45 opacity.
+- `satisfied` — K&U hour-range: minimum hours met **and** more hours could still be counted (room in discipline/max). Badge: "MIN MET". Distinct from `complete` to signal the student can keep going.
+- `incomplete` — requirement not yet met. Pick-one: no course taken. Hour-range: below minHours. Badge: "AREAS TO EXPLORE" or "X/Y+ hrs".
+- `optional-available` — optional requirement (minHours = 0) with 0 hours earned (e.g., World Languages II). Badge: "OPTIONAL".
+
+### Transcript course statuses (from `parseTranscript()`)
+- `completed` — normal graded/passed course.
+- `in-progress` — course marked "(In Progress)" in Workday; included in `allActiveSet`, so it counts for both pick-one and hour-range requirements (same as completed).
+- `transfer` — transfer credit, marked "(Transfer Credit)"; treated like `completed` for requirement matching.
+- `exemption` — special entry (e.g., "World Languages I Exemption"); satisfies a named category without contributing hours.
+
 ## Design Decisions
 
 - Completed non-tag categories get `opacity: 0.45` with `:hover` restore. Tags stay full opacity because they overlap with other requirements.
