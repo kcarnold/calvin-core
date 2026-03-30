@@ -1,3 +1,5 @@
+.DS_Store
 node_modules/
 dist/
-/test/fixtures/
+/test/fixtures/transcript-private*
+/test/fixtures/catalog.html
