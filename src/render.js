@@ -88,7 +88,11 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
       padding:18px 22px; border-radius:10px; margin:16px 0;
       font-family:system-ui,-apple-system,sans-serif; box-shadow:0 2px 12px rgba(0,0,0,0.15); }
     .ca-summary-panel h3 { color:#fff!important; margin:0 0 12px 0; font-size:16px; }
-    .ca-summary-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px; }
+    .ca-summary-section-label { color:#fbbf24; font-size:11px; font-weight:bold; text-transform:uppercase;
+      letter-spacing:0.5px; margin:14px 0 6px 0; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); }
+    .ca-summary-section-label:first-of-type { margin-top:8px; padding-top:0; border-top:none; }
+    .ca-summary-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+    .ca-summary-grid-4 { grid-template-columns:1fr 1fr 1fr 1fr; }
     .ca-summary-item { background:rgba(255,255,255,0.08); padding:8px 12px; border-radius:6px; font-size:12px;
       cursor:pointer; transition:background 0.15s; text-decoration:none; display:block; }
     .ca-summary-item:hover { background:rgba(255,255,255,0.15); }
@@ -96,6 +100,8 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
     .ca-summary-item .value { color:#fff; font-weight:bold; font-size:14px; }
     .ca-summary-item.complete .value { color:#4ade80; }
     .ca-summary-item.incomplete .value { color:#fbbf24; }
+    .ca-summary-item.exempt .value { color:#86efac; font-style:italic; }
+    .ca-summary-item.optional .value { color:#888; }
     .ca-summary-item .cap-note { color:#f87171; font-size:10px; }
     .ca-progress-bar { background:#2a2a3e; border-radius:8px; height:16px; overflow:hidden; position:relative; margin-top:4px; }
     .ca-progress-fill { height:100%; border-radius:8px; }
@@ -171,31 +177,88 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
     <div class="ca-legend-item"><div class="ca-legend-swatch" style="background:#eee;opacity:0.35"></div>Maxed / satisfied</div>
   `;
 
-  // ===== K&U SUMMARY PANEL (clickable links) =====
+  // ===== SUMMARY PANEL (all sections) =====
   const panel = document.createElement('div');
   panel.className = 'ca-summary-panel';
-  const pct = Math.min(100, Math.round(kuSummary.totalHours / kuSummary.requiredHours * 100));
-  const hColor = kuSummary.totalHours >= kuSummary.requiredHours ? '#4ade80' : '#fbbf24';
-  const cColor = kuSummary.categoriesUsed >= kuSummary.requiredCategories ? '#4ade80' : '#fbbf24';
-  let gridHTML = '';
-  for (const n of KU_NAMES) {
-    const info = kuSummary.hoursByCategory[n] || { raw: 0, effective: 0, max: null };
-    const cls = info.raw > 0 ? 'complete' : 'incomplete';
-    const capNote = (info.max !== null && info.raw > info.max) ? `<div class="cap-note">${info.raw}h earned, capped at ${info.max}h</div>` : '';
-    const slug = slugify(n);
-    gridHTML += `<a href="#${slug}" class="ca-summary-item ${cls}" data-slug="${slug}">
-      <span class="label">${n}</span><br><span class="value">${info.effective} hrs</span>${capNote}</a>`;
+
+  // Overall progress count
+  const countable = results.filter(r => r.status !== 'header' && r.status !== 'info-only');
+  const doneCount = countable.filter(r => r.status === 'complete' || r.isExempt).length;
+
+  // Group results by section
+  const sections = [];
+  let curSection = null;
+  for (const r of results) {
+    if (r.status === 'header') { curSection = { name: r.section, items: [] }; sections.push(curSection); continue; }
+    if (curSection && r.status !== 'info-only') curSection.items.push(r);
   }
+
+  // Build section HTML
+  function statusCls(r) {
+    if (r.isExempt) return 'exempt';
+    if (r.status === 'complete') return 'complete';
+    if (r.status === 'satisfied') return 'complete';
+    if (r.status === 'optional-available') return 'optional';
+    return 'incomplete';
+  }
+  function statusValue(r) {
+    if (r.isExempt) return 'Exempt';
+    if (r.status === 'complete') return '\u2713';
+    if (r.status === 'satisfied') return 'Min met';
+    if (r.status === 'optional-available') return 'Optional';
+    return '\u25CB';
+  }
+
+  let sectionsHTML = '';
+  for (const sec of sections) {
+    if (sec.items.length === 0) continue;
+    const isKU = sec.name === 'KNOWLEDGE AND UNDERSTANDING';
+    sectionsHTML += `<div class="ca-summary-section-label">${sec.name}</div>`;
+
+    if (isKU) {
+      // K&U: show hours progress bar + grid with hours
+      const pct = Math.min(100, Math.round(kuSummary.totalHours / kuSummary.requiredHours * 100));
+      const hColor = kuSummary.totalHours >= kuSummary.requiredHours ? '#4ade80' : '#fbbf24';
+      const cColor = kuSummary.categoriesUsed >= kuSummary.requiredCategories ? '#4ade80' : '#fbbf24';
+      sectionsHTML += `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span>Hours: <strong style="color:${hColor}">${kuSummary.totalHours} / ${kuSummary.requiredHours}</strong></span>
+        <span>Categories: <strong style="color:${cColor}">${kuSummary.categoriesUsed} / ${kuSummary.requiredCategories}</strong></span>
+      </div>
+      <div class="ca-progress-bar"><div class="ca-progress-fill" style="width:${pct}%;background:${hColor}"></div>
+        <div class="ca-progress-label">${pct}%</div></div>`;
+      let kuGrid = '';
+      for (const n of KU_NAMES) {
+        const info = kuSummary.hoursByCategory[n] || { raw: 0, effective: 0, max: null };
+        const cls = info.raw > 0 ? 'complete' : 'incomplete';
+        const capNote = (info.max !== null && info.raw > info.max) ? `<div class="cap-note">${info.raw}h earned, capped at ${info.max}h</div>` : '';
+        const slug = slugify(n);
+        kuGrid += `<a href="#${slug}" class="ca-summary-item ${cls}" data-slug="${slug}">
+          <span class="label">${n}</span><br><span class="value">${info.effective} hrs</span>${capNote}</a>`;
+      }
+      sectionsHTML += `<div class="ca-summary-grid">${kuGrid}</div>`;
+    } else {
+      // Non-K&U: compact status cards
+      const colCls = sec.items.length === 4 ? ' ca-summary-grid-4' : '';
+      let cards = '';
+      for (const r of sec.items) {
+        const cls = statusCls(r);
+        const val = statusValue(r);
+        const slug = r.slug;
+        const label = r.name;
+        cards += `<a href="#${slug}" class="ca-summary-item ${cls}" data-slug="${slug}">
+          <span class="label">${label}</span><br><span class="value">${val}</span></a>`;
+      }
+      sectionsHTML += `<div class="ca-summary-grid${colCls}">${cards}</div>`;
+    }
+  }
+
   panel.innerHTML = `
     <h3>\u{1F4CA} Core Opportunities</h3>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
-      <span>Progress (K&U Hours): <strong style="color:${hColor}">${kuSummary.totalHours} / ${kuSummary.requiredHours}</strong></span>
-      <span>Progress (K&U Categories): <strong style="color:${cColor}">${kuSummary.categoriesUsed} / ${kuSummary.requiredCategories}</strong></span>
+    <div style="font-size:13px;margin-bottom:4px">
+      <span>Overall: <strong style="color:${doneCount >= countable.length ? '#4ade80' : '#fbbf24'}">${doneCount} / ${countable.length}</strong> requirements complete</span>
     </div>
-    <div style="font-size:12px;color:#d5dbe5;margin-bottom:6px">Planned courses: <strong>${(plannedCourses || []).length}</strong> (do not count toward completed hours until taken)</div>
-    <div class="ca-progress-bar"><div class="ca-progress-fill" style="width:${pct}%;background:${hColor}"></div>
-      <div class="ca-progress-label">${pct}%</div></div>
-    <div class="ca-summary-grid">${gridHTML}</div>`;
+    <div style="font-size:12px;color:#d5dbe5;margin-bottom:2px">Planned courses: <strong>${(plannedCourses || []).length}</strong> (do not count toward completed hours until taken)</div>
+    ${sectionsHTML}`;
   panel.addEventListener('click', (e) => {
     const item = e.target.closest('.ca-summary-item');
     if (item) { e.preventDefault(); document.getElementById(item.dataset.slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
