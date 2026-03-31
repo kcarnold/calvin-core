@@ -4,22 +4,36 @@ Browser extension / bookmarklet that annotates https://catalog.calvin.edu/conten
 
 ## Project Structure
 
-- `src/core.js` — Pure logic: `parseTranscript`, `parseCoreProgram(root)`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
+- `src/core.js` — Pure logic: `parseTranscript`, `parseProgress`, `parseCoreProgram(root)`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
 - `src/render.js` — DOM rendering: injects styles, badges, TOC, annotations. Browser-only.
 - `src/ui.js` — Launcher panel, paste handler, `main()` entry. Browser-only.
 - `src/main.js` — Entry point (imports ui.js, calls `main()`).
 - `build.js` — esbuild: bundles to `dist/extension.js` (IIFE) and `dist/bookmarklet.js` (IIFE, minified).
-- `test/run-test.js` — Node.js test harness using jsdom. Runs `parseTranscript → parseCoreProgram → analyze` against transcript fixtures.
-- `test/fixtures/` — Gitignored. Contains `catalog.html` (auto-fetched), `transcript-*.txt` (student data), `*.expected.json` (snapshots).
+- `test/helpers.js` — Fluent scenario API and generic opportunity verifier for unit tests.
+- `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
+- `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
+- `test/test-opportunities.js` — Opportunity verification: proves "satisfied" status = real actionable opportunity.
+- `test/run-test.js` — Integration test harness: full pipeline with real transcripts + catalog HTML.
+- `test/generate-catalog-json.js` — One-shot script: parses catalog.html → catalog-categories.json (strips DOM fields).
+- `test/fixtures/` — Gitignored (student data). Exception: `catalog-categories.json` (public catalog data, committed).
 - `script.js` — Legacy monolith (kept for reference).
 
 ## Build & Test
 
 ```sh
 npm install
-npm run build   # → dist/extension.js + dist/bookmarklet.js
-npm test         # runs test/run-test.js against all transcript-*.txt fixtures
+npm run build          # → dist/extension.js + dist/bookmarklet.js
+npm test               # unit tests (node:test) + integration tests
+npm run test:unit      # 128 tests: parsing, logic, opportunity verification
+npm run test:integration  # legacy harness with real transcript snapshots
+npm run generate-catalog  # re-generate catalog-categories.json from catalog.html
 ```
+
+### Test layers
+1. **Parsing tests** (`test/test-parsing.js`) — parseTranscript, parseProgress, detectInputFormat, parseCoreProgram in isolation.
+2. **Logic tests** (`test/test-logic.js`) — analyze() with real catalog categories + constructed transcripts. Fluent scenario API designed to walk through with the registrar.
+3. **Opportunity tests** (`test/test-opportunities.js`) — proves every "satisfied" status is actionable: adding a course in a non-maxed discipline actually improves the result. Generic verifier tries both 4h and 2h.
+4. **Integration tests** (`test/run-test.js`) — full pipeline with real transcript files and JSON snapshot comparison.
 
 ## Target Page DOM
 
@@ -49,7 +63,7 @@ npm test         # runs test/run-test.js against all transcript-*.txt fixtures
 - `header` — section-level heading (e.g., "Foundations"); not a real requirement; skipped in tests and rendering.
 - `info-only` — category has no courses listed (nothing to fulfill); skipped in tests.
 - `complete` — all requirements satisfied. Pick-one: ≥1 course taken. Hour-range: min hours met and no more can be added (discipline cap reached or maxHours hit). Badge: "✓ COMPLETE"; block fades to 0.45 opacity.
-- `satisfied` — K&U hour-range: minimum hours met **and** more hours could still be counted (room in discipline/max). Badge: "MIN MET". Distinct from `complete` to signal the student can keep going.
+- `satisfied` — K&U hour-range: minimum hours met (including minHours=0 with hours > 0) **and** more hours could still be counted (room in discipline/max). Badge: "MIN MET". Distinct from `complete` to signal the student can keep going.
 - `incomplete` — requirement not yet met. Pick-one: no course taken. Hour-range: below minHours. Badge: "AREAS TO EXPLORE" or "X/Y+ hrs".
 - `optional-available` — optional requirement (minHours = 0) with 0 hours earned (e.g., World Languages II). Badge: "OPTIONAL".
 
