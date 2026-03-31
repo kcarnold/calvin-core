@@ -299,11 +299,10 @@ export function analyze(cats, transcript, options = {}) {
     if (cat.reqType === 'pick-one') status = takenHere.length > 0 ? 'complete' : 'incomplete';
     else {
       const minReq = cat.minHours || 0;
-      if (minReq > 0) {
-        if (hrsRaw < minReq) status = 'incomplete';
-        else if (cat.maxPerDiscipline && cat.maxHours !== null && hrsEffective < cat.maxHours && hasRemainingCourseOptions) status = 'satisfied';
-        else status = 'complete';
-      } else status = hrsRaw > 0 ? 'complete' : 'optional-available';
+      if (hrsRaw < minReq) status = 'incomplete';
+      else if (hrsRaw === 0 && minReq === 0) status = 'optional-available';
+      else if (cat.maxPerDiscipline && cat.maxHours !== null && hrsEffective < cat.maxHours && hasRemainingCourseOptions) status = 'satisfied';
+      else status = 'complete';
     }
     if (KU_NAMES.includes(cat.name)) {
       kuH[cat.name] = { raw: hrsRaw, effective: hrsEffective, max: cat.maxHours };
