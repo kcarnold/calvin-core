@@ -14,6 +14,12 @@
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/pdf.worker.min.mjs"],
+      "matches": ["https://catalog.calvin.edu/*"]
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "calvin-core-annotator@kcarnold.github.com"

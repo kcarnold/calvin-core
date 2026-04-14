@@ -6,9 +6,43 @@ const UI_IDS = {
   panel: 'ca-launcher-panel',
   details: 'ca-launcher-details',
   textarea: 'ca-transcript-input',
+  pdfInput: 'ca-pdf-input',
   status: 'ca-launcher-status',
   styles: 'ca-launcher-styles',
 };
+
+const PDFJS_VERSION = '4.9.155';
+const PDFJS_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`;
+
+async function extractTextFromPdf(file) {
+  let pdfjsLib;
+  // __USE_BUNDLED_PDFJS__ is set by esbuild define; dead branch is tree-shaken per build target
+  /* global __USE_BUNDLED_PDFJS__ */
+  if (__USE_BUNDLED_PDFJS__) {
+    pdfjsLib = await import('pdfjs-dist/build/pdf.min.mjs');
+    // Worker must be a separate file declared as web_accessible_resource in manifest.json
+    pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('dist/pdf.worker.min.mjs');
+  } else {
+    pdfjsLib = await import(`${PDFJS_CDN}/pdf.min.mjs`);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `${PDFJS_CDN}/pdf.worker.min.mjs`;
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const lines = [];
+    let lastY = null;
+    for (const item of content.items) {
+      if (lastY !== null && Math.abs(item.transform[5] - lastY) > 2) lines.push('\n');
+      lines.push(item.str);
+      lastY = item.transform[5];
+    }
+    pages.push(lines.join(''));
+  }
+  return pages.join('\n');
+}
 
 const plannedCourses = new Set();
 
@@ -184,10 +218,12 @@ function mountLauncher() {
   panel.innerHTML = `
     <details id="${UI_IDS.details}">
       <summary>Calvin Core Annotator</summary>
-      <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here. Pasting shows opportunities immediately.</p>
+      <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here — or load a PDF transcript below.</p>
       <textarea id="${UI_IDS.textarea}" spellcheck="false" placeholder="Paste Workday Academic History or Academic Progress here"></textarea>
+      <input type="file" id="${UI_IDS.pdfInput}" accept=".pdf" style="display:none">
       <div class="ca-launcher-actions">
         <button type="button" class="ca-launcher-button" data-action="analyze">Show core opportunities</button>
+        <button type="button" class="ca-launcher-button ca-launcher-button-secondary" data-action="load-pdf">Load from PDF…</button>
         <button type="button" class="ca-launcher-button ca-launcher-button-secondary" data-action="reset">Reset annotations</button>
         <span id="${UI_IDS.status}">Paste your Workday Academic History or Academic Progress to see your core opportunities.</span>
       </div>
@@ -196,10 +232,27 @@ function mountLauncher() {
 
   const details = panel.querySelector('details');
   const textarea = panel.querySelector('textarea');
+  const pdfInput = panel.querySelector(`#${UI_IDS.pdfInput}`);
+  pdfInput.addEventListener('change', async () => {
+    const file = pdfInput.files[0];
+    if (!file) return;
+    pdfInput.value = '';
+    setStatus('Extracting text from PDF…', null);
+    try {
+      const text = await extractTextFromPdf(file);
+      textarea.value = text;
+      runAnnotation(text);
+      details.open = false;
+    } catch (err) {
+      setStatus(`PDF extraction failed: ${err.message}`, 'error');
+    }
+  });
+
   panel.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
     if (button.dataset.action === 'analyze') runAnnotation(textarea.value);
+    if (button.dataset.action === 'load-pdf') pdfInput.click();
     if (button.dataset.action === 'reset') {
       textarea.value = '';
       plannedCourses.clear();
