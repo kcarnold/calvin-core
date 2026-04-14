@@ -81,6 +81,16 @@ https://kcarnold.github.io/calvin-core/
 
 The live bookmarklet there injects `https://kcarnold.github.io/calvin-core/bookmarklet.js`, so pushing a new `docs/bookmarklet.js` updates the bookmarklet behavior without asking users to replace the bookmark.
 
+## Program Overlap Viewer (Separate)
+
+The overlap viewer is intentionally distributed as a separate tool from the core transcript annotator.
+
+- Install page: `https://kcarnold.github.io/calvin-core/overlap.html`
+- Hosted script: `https://kcarnold.github.io/calvin-core/overlap-view.js`
+- Source script: `overlap_view.js` (runs on `preview_program.php` pages)
+
+Run `npm run build` to regenerate `docs/overlap-view.js`.
+
 ## Files
   bookmarklet-entry.js ← hosted bookmarklet entry point
 
@@ -97,4 +107,5 @@ test/
 build.js        ← esbuild config → dist/extension.js + dist/bookmarklet.js
 manifest.json   ← WebExtension manifest (Chrome, Edge, Firefox)
 script.js       ← legacy monolith (kept for reference, not used by build)
+overlap_view.js ← standalone program/core overlap panel script
 ```

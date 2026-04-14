@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Calvin Core Annotator Bookmarklet</title>
+  <title>Calvin Program Overlap Viewer Bookmarklet</title>
   <style>
     :root {
       color-scheme: light;
@@ -43,7 +43,7 @@
     }
 
     h1 {
-      font-size: clamp(2.4rem, 5vw, 4rem);
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
       letter-spacing: -0.03em;
     }
 
@@ -80,7 +80,7 @@
     }
 
     .lede {
-      max-width: 54ch;
+      max-width: 56ch;
       margin: 16px 0 0;
       font-size: 1.05rem;
     }
@@ -146,21 +146,13 @@
       resize: vertical;
     }
 
-    .bookmarklet-link {
-      font-weight: 700;
+    a {
+      color: var(--accent);
     }
 
     .note {
       margin-top: 12px;
       font-size: 0.95rem;
-    }
-
-    .small {
-      font-size: 0.95rem;
-    }
-
-    a {
-      color: var(--accent);
     }
 
     @media (max-width: 640px) {
@@ -174,44 +166,35 @@
 <body>
   <main>
     <section class="hero">
-      <span class="eyebrow">Calvin Core Annotator</span>
-      <p class="lede">This bookmarklet loads the latest annotator script each time you click it on the Calvin catalog core-program page.</p>
+      <span class="eyebrow">Calvin Program Overlap Viewer</span>
+      <h1>Visualize program and core overlap</h1>
+      <p class="lede">This bookmarklet runs on any Calvin catalog program page and opens a side panel showing direct course overlap with Core requirements.</p>
       <div class="actions">
-        <a class="button bookmarklet-link" href="javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/bookmarklet.js';const id='ca-bookmarklet-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();">Calvin Core Annotator</a>
-        <a class="button secondary" href="https://catalog.calvin.edu/content.php?catoid=24&amp;navoid=780">Open the catalog page</a>
-        <a class="button secondary" href="./overlap.html">Program overlap viewer</a>
+        <a class="button" href="javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/overlap-view.js';const id='ca-overlap-view-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();">Program overlap viewer</a>
+        <a class="button secondary" href="https://catalog.calvin.edu/preview_program.php">Open a program page</a>
+        <a class="button secondary" href="./index.html">Core annotator bookmarklet</a>
       </div>
-      <p class="note">Desktop browsers usually let you drag the bookmarklet link straight into the bookmarks bar.</p>
+      <p class="note">Drag the bookmarklet button into your bookmarks bar, then click it while viewing any program page.</p>
     </section>
 
     <section class="card">
       <h2>Install</h2>
       <ol>
         <li>Show your browser bookmarks bar.</li>
-        <li>Drag the <strong>Calvin Core Annotator</strong> link above into the bar.</li>
-        <li>Open the Calvin catalog core-program page.</li>
-        <li>Click the bookmark you just added.</li>
+        <li>Drag <strong>Program overlap viewer</strong> into the bar.</li>
+        <li>Open any page with path preview_program.php on catalog.calvin.edu.</li>
+        <li>Click the bookmark to load the viewer panel.</li>
       </ol>
-      <p class="note">If drag-and-drop is awkward, create a new bookmark manually and paste the URL below into the bookmark URL field.</p>
-      <textarea readonly>javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/bookmarklet.js';const id='ca-bookmarklet-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();</textarea>
-    </section>
-
-    <section class="card">
-      <h2>Use</h2>
-      <ol>
-        <li>In Workday, open Academic Record, then Academic History.</li>
-        <li>Select all of the transcript content and copy it.</li>
-        <li>On the catalog page, click the bookmarklet.</li>
-        <li>Paste the transcript into the panel that appears above the core requirements.</li>
-      </ol>
+      <p class="note">If drag-and-drop is awkward, create a bookmark manually and paste this URL:</p>
+      <textarea readonly>javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/overlap-view.js';const id='ca-overlap-view-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();</textarea>
     </section>
 
     <section class="card">
       <h2>Notes</h2>
       <ul>
-        <li>This tool is unofficial and should be treated as a planning aid, not an official degree audit.</li>
+        <li>This is a planning aid and not an official degree audit.</li>
+        <li>It is intentionally separate from the transcript-based core annotator flow.</li>
       </ul>
-      <p class="small"><a href="https://github.com/kcarnold/calvin-core">Source on GitHub</a></p>
     </section>
   </main>
 </body>
