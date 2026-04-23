@@ -47,7 +47,7 @@ B+
     assert.equal(courses[1].grade, 'B+');
   });
 
-  it('merges lab hours into parent lecture course', () => {
+  it('keeps lab as a separate course row', () => {
     const text = `Opens in new window
 CS 108 - Introduction to Computing
 A
@@ -61,22 +61,10 @@ A
 1
 4.000`;
     const courses = parseTranscript(text);
-    assert.equal(courses.length, 1, 'lab should be merged');
-    assert.equal(courses[0].code, 'CS 108');
-    assert.equal(courses[0].hours, 4, 'CS 108 should have 3 + 1 = 4 hours');
-  });
-
-  it('keeps standalone lab if parent not present', () => {
-    const text = `Opens in new window
-CS 108L - Introduction to Computing Lab
-A
-4.000
-1
-4.000`;
-    const courses = parseTranscript(text);
-    assert.equal(courses.length, 1);
-    assert.equal(courses[0].code, 'CS 108L');
-    assert.equal(courses[0].hours, 1);
+    assert.equal(courses.length, 2, 'lecture and lab should both be present');
+    const byCode = Object.fromEntries(courses.map(c => [c.code, c]));
+    assert.equal(byCode['CS 108']?.hours, 3);
+    assert.equal(byCode['CS 108L']?.hours, 1);
   });
 
   it('handles course codes with letter suffixes', () => {
@@ -193,7 +181,7 @@ Knowledge and Understanding - minimum 26 hours (Click for more details) (Overrid
     assert.ok(overrides.has('Knowledge and Understanding - minimum 26 hours'));
   });
 
-  it('merges lab into parent and deduplicates', () => {
+  it('keeps labs separate and deduplicates repeated lecture rows', () => {
     const text = `RequirementSort and filter column
 StatusSort and filter column
 Satisfied With
@@ -215,8 +203,8 @@ A`;
     const { courses } = parseProgress(text);
     const cs108 = courses.filter(c => c.code === 'CS 108');
     assert.equal(cs108.length, 1, 'CS 108 should appear once (deduplicated)');
-    assert.equal(cs108[0].hours, 4, 'CS 108 should have 3 + 1 = 4 hours');
-    assert.ok(!courses.find(c => c.code === 'CS 108L'), 'CS 108L should be merged away');
+    assert.equal(cs108[0].hours, 3, 'CS 108 hours should remain lecture-only in loader output');
+    assert.equal(courses.filter(c => c.code === 'CS 108L').length, 1, 'CS 108L should remain as its own row');
   });
 
   it('returns empty for no courses', () => {

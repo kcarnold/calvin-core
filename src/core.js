@@ -20,16 +20,10 @@ export function parseTranscript(text) {
     match = rowRe.exec(normalized);
   }
 
+  // Deduplicate by course code; keep first occurrence from the transcript.
   const byCode = new Map();
-  const labs = [];
   for (const c of raw) {
-    const labMatch = c.code.match(/^([A-Z]{2,5}\s+\d{3})L$/);
-    if (labMatch) labs.push({ parentCode: labMatch[1], ...c });
-    else byCode.set(c.code, { ...c });
-  }
-  for (const lab of labs) {
-    if (byCode.has(lab.parentCode)) byCode.get(lab.parentCode).hours += lab.hours;
-    else byCode.set(lab.code, lab);
+    if (!byCode.has(c.code)) byCode.set(c.code, { ...c });
   }
   return Array.from(byCode.values());
 }
@@ -114,25 +108,16 @@ export function parseProgress(text) {
     raw.push({ code: cm[1] + ' ' + cm[2], title, grade, hours, status, period });
   }
 
-  // Deduplicate and merge labs (same logic as parseTranscript)
+  // Deduplicate by code/title; keep first occurrence.
   const byCode = new Map();
-  const labsByCode = new Map();
   for (const c of raw) {
     if (c.code === null) {
-      // exemptions — keep as-is, keyed by title
       if (!byCode.has(c.title)) byCode.set(c.title, c);
       continue;
     }
-    const labMatch = c.code.match(/^([A-Z]{2,5}\s+\d{3})L$/);
-    if (labMatch) {
-      if (!labsByCode.has(c.code)) labsByCode.set(c.code, { parentCode: labMatch[1], ...c });
-    } else if (!byCode.has(c.code)) {
+    if (!byCode.has(c.code)) {
       byCode.set(c.code, { ...c });
     }
-  }
-  for (const lab of labsByCode.values()) {
-    if (byCode.has(lab.parentCode)) byCode.get(lab.parentCode).hours += lab.hours;
-    else byCode.set(lab.code, lab);
   }
   const courses = Array.from(byCode.values());
   return { courses, exemptions, overrides };
@@ -235,10 +220,34 @@ function normalizeCourseCode(code) {
   return (code || '').toUpperCase().replace(/\s+/g, ' ').trim();
 }
 
+function mergeLabHoursForAnalysis(transcript) {
+  const byCode = new Map();
+  const labs = [];
+  const nonCourseEntries = [];
+
+  for (const c of transcript) {
+    if (!c.code) {
+      nonCourseEntries.push(c);
+      continue;
+    }
+    const labMatch = c.code.match(/^([A-Z]{2,5}\s+\d{3})L$/);
+    if (labMatch) labs.push({ parentCode: labMatch[1], ...c });
+    else if (!byCode.has(c.code)) byCode.set(c.code, { ...c });
+  }
+
+  for (const lab of labs) {
+    if (byCode.has(lab.parentCode)) byCode.get(lab.parentCode).hours += lab.hours;
+    else if (!byCode.has(lab.code)) byCode.set(lab.code, { ...lab });
+  }
+
+  return [...Array.from(byCode.values()), ...nonCourseEntries];
+}
+
 export function analyze(cats, transcript, options = {}) {
-  const completedOrTransfer = transcript.filter(c => c.status !== 'in-progress' && c.status !== 'exemption');
-  const inProgressCourses = transcript.filter(c => c.status === 'in-progress');
-  const exemptionEntries = transcript.filter(c => c.status === 'exemption');
+  const mergedTranscript = mergeLabHoursForAnalysis(transcript);
+  const completedOrTransfer = mergedTranscript.filter(c => c.status !== 'in-progress' && c.status !== 'exemption');
+  const inProgressCourses = mergedTranscript.filter(c => c.status === 'in-progress');
+  const exemptionEntries = mergedTranscript.filter(c => c.status === 'exemption');
   const exemptedCategories = new Set(exemptionEntries.map(e => e.exemptionTarget).filter(Boolean));
 
   const takenSet = new Set(completedOrTransfer.map(c => c.code).filter(Boolean));
@@ -246,7 +255,7 @@ export function analyze(cats, transcript, options = {}) {
   // Combined set: courses that contribute hours (completed + transfer + in-progress)
   const allActiveSet = new Set([...takenSet, ...inProgressSet]);
   const takenMap = {};
-  for (const c of transcript) { if (c.code) takenMap[c.code] = c; }
+  for (const c of mergedTranscript) { if (c.code) takenMap[c.code] = c; }
   const plannedSet = new Set(
     (options.plannedCourses || [])
       .map(code => normalizeCourseCode(code))

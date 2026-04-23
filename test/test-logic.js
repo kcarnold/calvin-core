@@ -172,6 +172,24 @@ describe('transfer credits', () => {
   });
 });
 
+describe('lab hours are merged in analyze()', () => {
+  it('adds lab hours to lecture course for category counting', () => {
+    const cats = loadCategories();
+    const transcript = [
+      makeCourse('CS 108', 3),
+      makeCourse('CS 108L', 1, { title: 'Introduction to Computing Lab' }),
+    ];
+
+    const analysis = analyze(cats, transcript);
+    const math = getResult(analysis, 'Mathematical Sciences');
+    const cs108 = math.courseAnnotations.find(c => c.code === 'CS 108');
+
+    assert.equal(math.hoursEarned, 4);
+    assert.equal(math.hoursEffective, 4);
+    assert.equal(cs108?.hours, 4);
+  });
+});
+
 // ---- Multi-section courses (double-counting) ----
 
 describe('multi-section courses', () => {
