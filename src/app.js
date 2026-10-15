@@ -75,6 +75,22 @@ function update() {
   document.querySelectorAll('a[data-catalog-link]').forEach(el => { el.href = meta.sourceUrl; });
 
   let analysis = null;
+  try {
+    analysis = analyzeInput(catalog);
+  } catch (err) {
+    // Never fail silently: whatever the input, say what went wrong.
+    console.error('[Core Planner]', err);
+    analysis = null;
+    setStatus(`Something went wrong reading your courses (${err.message}). `
+      + 'Please report this, with the file or text you used if you can share it.', 'error');
+  }
+  renderResults(catalog, analysis);
+}
+
+// Parses the current input and analyzes it, setting the status line.
+// Returns the analysis, or null when there's nothing to show.
+function analyzeInput(catalog) {
+  let analysis = null;
   const text = state.text.trim();
   const input = state.file ?? (text ? parseInput(text) : null);
   if (input?.error) {
@@ -98,7 +114,10 @@ function update() {
   } else {
     setStatus('', null);
   }
+  return analysis;
+}
 
+function renderResults(catalog, analysis) {
   renderApp($('results'), {
     catalog, catalogs: CATALOGS, analysis, openLists: state.openLists,
     onTogglePlanned: code => {
@@ -136,6 +155,7 @@ function init() {
     update();
   });
 
+  const dropZone = $('drop-zone');
   async function loadFile(file) {
     if (!file) return;
     input.value = '';
@@ -143,23 +163,36 @@ function init() {
     state.plannedCourses.clear();
     setStatus(`Reading ${file.name}…`, null);
     state.file = await readExport(file);
+    // Let the same file be chosen again (e.g. after re-exporting).
+    fileInput.value = '';
     update();
   }
   fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
-  // Dropping a file anywhere on the input card reads it instead of opening it.
+  // Dropping a file anywhere on the input card reads it instead of opening
+  // it; the drop zone lights up while a file is over the card.
   const card = $('input-card');
+  let dragDepth = 0;
+  const hasFiles = e => Array.from(e.dataTransfer?.types || []).includes('Files');
+  card.addEventListener('dragenter', e => {
+    if (!hasFiles(e)) return;
+    dragDepth++;
+    dropZone.classList.add('dragging');
+  });
   card.addEventListener('dragover', e => {
-    if (!e.dataTransfer.types.includes('Files')) return;
+    if (!hasFiles(e)) return;
     e.preventDefault();
-    card.classList.add('dragging');
+    e.dataTransfer.dropEffect = 'copy';
   });
   card.addEventListener('dragleave', e => {
-    if (!card.contains(e.relatedTarget)) card.classList.remove('dragging');
+    if (!hasFiles(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dropZone.classList.remove('dragging');
   });
   card.addEventListener('drop', e => {
-    if (!e.dataTransfer.files.length) return;
+    if (!hasFiles(e)) return;
     e.preventDefault();
-    card.classList.remove('dragging');
+    dragDepth = 0;
+    dropZone.classList.remove('dragging');
     loadFile(e.dataTransfer.files[0]);
   });
 

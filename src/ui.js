@@ -261,9 +261,15 @@ function mountLauncher(catalogPage) {
     const file = fileInput.files[0];
     if (!file) return;
     textarea.value = '';
-    await runExport(file);
+    try {
+      await runExport(file);
+      details.open = false;
+    } catch (err) {
+      // Never fail silently: keep the panel open so the error shows.
+      console.error('[Core Annotator]', err);
+      setStatus(`Something went wrong reading ${file.name} (${err.message}). Please report this.`, 'error');
+    }
     fileInput.value = '';
-    details.open = false;
   });
   panel.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
