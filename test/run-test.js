@@ -17,7 +17,7 @@
  * challenge, so the HTML must be saved from a browser (not fetched here).
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
@@ -130,32 +130,44 @@ async function main() {
 
   let passed = 0, failed = 0, unsnapshotted = 0;
 
-  // ---- Transcript tests (existing) ----
-  for (const file of transcriptFiles) {
-    const name = basename(file, '.txt');
-    const text = readFileSync(file, 'utf-8');
-    const transcript = parseTranscript(text);
-    const analysis = analyze(categories, transcript, { extraCourses: KNOWN_COURSE_CATEGORIES });
+  function checkSnapshot(file, name, courses) {
+    const analysis = analyze(categories, courses, { extraCourses: KNOWN_COURSE_CATEGORIES });
     const actual = summarize(analysis);
-
     const expectedPath = file.replace(/\.txt$/, '.expected.json');
 
-    if (existsSync(expectedPath)) {
+    // Empty = just created by the shell redirect in the snapshot command.
+    if (existsSync(expectedPath) && statSync(expectedPath).size > 0) {
       const expected = JSON.parse(readFileSync(expectedPath, 'utf-8'));
       if (deepEqual(expected, actual)) {
-        console.log(`✓ ${name} (${transcript.length} courses, ${analysis.kuSummary.totalHours}/${analysis.kuSummary.requiredHours} K&U hrs)`);
+        console.error(`✓ ${name} (${courses.length} courses, ${analysis.kuSummary.totalHours}/${analysis.kuSummary.requiredHours} K&U hrs)`);
         passed++;
       } else {
         const diffs = diffSummaries(expected, actual);
-        console.log(`✗ ${name}`);
-        for (const d of diffs) console.log(`    ${d}`);
+        console.error(`✗ ${name}`);
+        for (const d of diffs) console.error(`    ${d}`);
         failed++;
       }
     } else {
-      console.log(`? ${name} — no expected file, printing actual output:`);
+      console.error(`? ${name} — no expected file, printing actual output:`);
       console.log(JSON.stringify(actual, null, 2));
       console.error(`  To snapshot: node test/run-test.js ${file} > ${expectedPath}`);
       unsnapshotted++;
+    }
+  }
+
+  // ---- Transcript tests ----
+  for (const file of transcriptFiles) {
+    const name = basename(file, '.txt');
+    checkSnapshot(file, name, parseTranscript(readFileSync(file, 'utf-8')));
+  }
+
+  function check(actual, expected, label) {
+    if (actual === expected) {
+      console.error(`  ✓ ${label}`);
+      passed++;
+    } else {
+      console.error(`  ✗ ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+      failed++;
     }
   }
 
@@ -164,98 +176,60 @@ async function main() {
     const name = basename(file, '.txt');
     const text = readFileSync(file, 'utf-8');
 
-    // Test 1: detectInputFormat identifies this as progress
     const fmt = detectInputFormat(text);
     if (fmt !== 'progress') {
-      console.log(`✗ ${name} detectInputFormat: expected 'progress', got '${fmt}'`);
+      console.error(`✗ ${name} detectInputFormat: expected 'progress', got '${fmt}'`);
       failed++;
     } else {
-      console.log(`✓ ${name} detectInputFormat → 'progress'`);
+      console.error(`✓ ${name} detectInputFormat → 'progress'`);
       passed++;
     }
 
-    // Test 2: parseProgress extracts courses
     const { courses, exemptions, overrides } = parseProgress(text);
-    const realCourses = courses.filter(c => c.code !== null);
-    const exemptionEntries = courses.filter(c => c.status === 'exemption');
-    const inProgressCourses = realCourses.filter(c => c.status === 'in-progress');
-    const transferCourses = realCourses.filter(c => c.status === 'transfer');
-    const completedCourses = realCourses.filter(c => c.status === 'completed');
+    checkSnapshot(file, name, courses);
 
-    console.log(`  parseProgress: ${realCourses.length} courses, ${inProgressCourses.length} in-progress, ${transferCourses.length} transfer, ${completedCourses.length} completed`);
-    console.log(`  exemptions: ${exemptions.length}, overrides: ${overrides.size}`);
-
-    // Test 3: Specific assertions for the example fixture
-    const coursesByCode = {};
-    for (const c of courses) { if (c.code) coursesByCode[c.code] = c; }
-
-    const assertions = [
-      // In-progress courses detected
-      [coursesByCode['REL 212']?.status, 'in-progress', 'REL 212 should be in-progress'],
-      [coursesByCode['ECON 221']?.status, 'in-progress', 'ECON 221 should be in-progress'],
-      [coursesByCode['CS 384']?.status, 'in-progress', 'CS 384 should be in-progress'],
-      // Transfer credit detected
-      [coursesByCode['PHYS 222']?.status, 'transfer', 'PHYS 222 should be transfer'],
-      [coursesByCode['PHYS 222']?.hours, 4, 'PHYS 222 should have 4 hours'],
-      [coursesByCode['PHYS 222']?.grade, 'CR', 'PHYS 222 grade should be CR'],
-      // Regular completed course
-      [coursesByCode['CORE 100']?.status, 'completed', 'CORE 100 should be completed'],
-      [coursesByCode['CORE 100']?.hours, 2, 'CORE 100 should have 2 hours'],
-      // Lab merging: CS 108L (1h) should merge into CS 108 (3h) = 4h total
-      [coursesByCode['CS 108']?.hours, 4, 'CS 108 should have 4 hours (3 + 1 lab)'],
-      [coursesByCode['CS 108L'], undefined, 'CS 108L should not exist (merged into CS 108)'],
-      // Lab merging: CS 112L (1h) should merge into CS 112 (3h) = 4h total
-      [coursesByCode['CS 112']?.hours, 4, 'CS 112 should have 4 hours (3 + 1 lab)'],
-      // Exemption detected
-      [exemptions.length >= 1, true, 'Should have at least 1 exemption'],
-      [exemptions[0]?.target, 'World Languages I', 'Language Exemption should target World Languages I'],
-      // Override detected
-      [overrides.has('Knowledge and Understanding - minimum 26 hours'), true, 'Should detect K&U override'],
-      // Deduplication: courses appearing in multiple sections should be deduplicated
-      [realCourses.filter(c => c.code === 'CS 108').length, 1, 'CS 108 should appear only once (deduplicated)'],
-    ];
-
-    for (const [actual, expected, label] of assertions) {
-      if (actual === expected) {
-        console.log(`  ✓ ${label}`);
-        passed++;
-      } else {
-        console.log(`  ✗ ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-        failed++;
-      }
-    }
-
-    // Test 4: Feed into analyze() and check exemption handling
-    const analysis = analyze(categories, courses, { extraCourses: KNOWN_COURSE_CATEGORIES });
-    const wl1 = analysis.results.find(r => r.name === 'World Languages I');
-    if (wl1) {
-      if (wl1.status === 'complete' && wl1.isExempt) {
-        console.log(`  ✓ World Languages I marked complete via exemption`);
-        passed++;
-      } else {
-        console.log(`  ✗ World Languages I: expected complete+exempt, got status='${wl1.status}', isExempt=${wl1.isExempt}`);
-        failed++;
-      }
-    } else {
-      console.log(`  ✗ World Languages I category not found in analysis results`);
-      failed++;
-    }
-
-    // Test 5: In-progress courses contribute hours
-    const kuResult = analysis.results.find(r => r.name && r.courseAnnotations?.some(c => c.code === 'CS 384'));
-    if (kuResult) {
-      const cs384ann = kuResult.courseAnnotations.find(c => c.code === 'CS 384');
-      if (cs384ann?.isInProgress) {
-        console.log(`  ✓ CS 384 annotated as in-progress in analysis`);
-        passed++;
-      } else {
-        console.log(`  ✗ CS 384 should be annotated as in-progress`);
-        failed++;
-      }
-    }
+    if (name === 'progress-example') checkProgressExample(courses, exemptions, overrides);
   }
 
-  console.log(`\n${passed} passed, ${failed} failed, ${unsnapshotted} unsnapshotted`);
+  // Field-level checks for progress-example.txt, which exercises every
+  // entry kind: in-progress, transfer, exemption, override, labs, and a
+  // course repeated under two requirements.
+  function checkProgressExample(courses, exemptions, overrides) {
+    const realCourses = courses.filter(c => c.code !== null);
+    const byCode = {};
+    for (const c of realCourses) byCode[c.code] = c;
+
+    check(byCode['REL 212']?.status, 'in-progress', 'REL 212 should be in-progress');
+    check(byCode['ECON 221']?.status, 'in-progress', 'ECON 221 should be in-progress');
+    check(byCode['CS 384']?.status, 'in-progress', 'CS 384 should be in-progress');
+    check(byCode['PHYS 221']?.status, 'transfer', 'PHYS 221 should be transfer');
+    check(byCode['PHYS 221']?.hours, 4, 'PHYS 221 should have 4 hours');
+    check(byCode['PHYS 221']?.grade, 'CR', 'PHYS 221 grade should be CR');
+    check(byCode['CORE 100']?.status, 'completed', 'CORE 100 should be completed');
+    check(byCode['CORE 100']?.hours, 2, 'CORE 100 should have 2 hours');
+    // Labs stay separate rows at parse time; analyze() merges them.
+    check(byCode['CS 108']?.hours, 3, 'CS 108 should parse as lecture-only (3 hours)');
+    check(byCode['CS 108L']?.hours, 1, 'CS 108L should parse as its own row');
+    check(realCourses.filter(c => c.code === 'CS 108').length, 1, 'CS 108 should appear only once (deduplicated)');
+    check(exemptions.length >= 1, true, 'Should have at least 1 exemption');
+    check(exemptions[0]?.target, 'World Languages I', 'Language Exemption should target World Languages I');
+    check(overrides.has('Knowledge and Understanding - minimum 26 hours'), true, 'Should detect K&U override');
+
+    const analysis = analyze(categories, courses, { extraCourses: KNOWN_COURSE_CATEGORIES });
+    const annotation = code => analysis.results
+      .flatMap(r => r.courseAnnotations || [])
+      .find(a => a.code === code && (a.isTaken || a.isInProgress));
+
+    const wl1 = analysis.results.find(r => r.name === 'World Languages I');
+    check(wl1?.status, 'complete', 'World Languages I should be complete');
+    check(wl1?.isExempt, true, 'World Languages I should be marked exempt');
+    check(annotation('CS 108')?.hours, 4, 'CS 108 should count 4 hours in analysis (3 + 1 lab)');
+    check(annotation('CHEM 101')?.hours, 4, 'CHEM 101 should count 4 hours in analysis (3 + 1 lab)');
+    check(annotation('CS 384')?.isInProgress, true, 'CS 384 should be annotated as in-progress');
+    check(analysis.kuWarnings.length, 0, 'Should have no K&U warnings');
+  }
+
+  console.error(`\n${passed} passed, ${failed} failed, ${unsnapshotted} unsnapshotted`);
   if (failed > 0) process.exit(1);
 }
 
