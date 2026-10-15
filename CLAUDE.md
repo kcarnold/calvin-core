@@ -33,7 +33,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 npm install
 npm run build          # → dist/extension.js + dist/bookmarklet.js
 npm test               # unit tests (node:test) + integration tests
-npm run test:unit      # 128 tests: parsing, logic, opportunity verification
+npm run test:unit      # 154 tests: parsing, logic, opportunity verification
 npm run test:integration  # legacy harness with real transcript snapshots
 npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from catalog-25.html
 ```
@@ -56,6 +56,17 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 - Students copy-paste from Workday's "Student Academic History" page. Entries are tab-delimited, separated by "Opens in new window" strings.
 - Fields per entry: course name, grade, grade points (decimal), hours (integer), earned grade points (decimal). The grade regex must allow 1-2 uppercase letters (e.g., "A-", "B+", "CR").
 - Lab courses (code ending in `L`, e.g., `CS 106L`) must have their hours merged into the parent lecture course. Labs rarely appear in core lists; when one does (ENGR 303L in the 2025–26 Environmental Sustainability tag), the merged parent's `labCodes` keep it matchable without double-counting hours.
+
+## Academic Progress Format
+
+- One field per line. Hours may be fractional (`1.5`, transfer credit).
+- Any line that isn't a course or field value is taken as a requirement name; each course records the Workday requirement(s) it's listed under in `requirements` (e.g. "Knowledge and Understanding - minimum 26 hours").
+
+## Placeholder Credit and K&U Warnings
+
+- AP/transfer core credit can arrive with no course number: `HIST CORE - AP/Transfer History Core (Transfer Credit)`. Parsers set `isPlaceholder` + `subject`.
+- `inferPlaceholderCategory` assumes it counts where ≥75% of that subject's K&U courses (page + union) sit, as that sub-discipline (HIST → Humanities/History, ARTS → Arts/Visual Arts). Ambiguous subjects (HNRS) aren't guessed. Assumed courses get `isAssumed` annotations with no `element`; render shows an orange "Assumed" note on the block.
+- `analysis.kuWarnings`: placeholders we couldn't place, and courses Workday lists under K&U that land in no K&U category. Render shows a warning box above the summary; the launcher status mentions the count.
 
 ## Requirement Rules
 

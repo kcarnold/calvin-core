@@ -1,22 +1,31 @@
 // ========== TRANSCRIPT PARSER ==========
+// Transfer/AP core credit can come in as a placeholder with no course number,
+// e.g. "HIST CORE - AP/Transfer History Core". analyze() infers its category.
+const PLACEHOLDER_NUMBER = 'CORE';
+
+function courseEntry(subject, number, fields) {
+  const entry = { code: subject + ' ' + number, ...fields };
+  if (number === PLACEHOLDER_NUMBER) { entry.isPlaceholder = true; entry.subject = subject; }
+  return entry;
+}
+
 export function parseTranscript(text) {
   const normalized = text
     .replace(/\u00a0/g, ' ')
     .replace(/\r\n?/g, '\n')
     .replace(/\s+/g, ' ')
     .trim();
-  const rowRe = /\b([A-Z]{2,5})\s+(\d{3}[A-Z]?)\s*-\s*(.+?)\s+([A-Z]{1,2}[+-]?)\s+\d+(?:\.\d+)?\s+(\d+(?:\.\d+)?)\s+\d+(?:\.\d+)?\b/g;
+  const rowRe = /\b([A-Z]{2,5})\s+(\d{3}[A-Z]?|CORE)\s*-\s*(.+?)\s+([A-Z]{1,2}[+-]?)\s+\d+(?:\.\d+)?\s+(\d+(?:\.\d+)?)\s+\d+(?:\.\d+)?\b/g;
   const raw = [];
   let match = rowRe.exec(normalized);
   while (match !== null) {
     const [, subject, courseNumber, rawTitle, grade, hoursText] = match;
-    raw.push({
-      code: subject + ' ' + courseNumber,
+    raw.push(courseEntry(subject, courseNumber, {
       title: rawTitle.replace(/\s+/g, ' ').trim(),
       grade,
       hours: parseFloat(hoursText),
       status: 'completed',
-    });
+    }));
     match = rowRe.exec(normalized);
   }
 
@@ -31,6 +40,8 @@ export function parseTranscript(text) {
 // ========== PROGRESS PARSER ==========
 // Parses copy-paste from Workday Academic Progress page.
 // Returns { courses: [...], exemptions: [...], overrides: Set }
+// Each course records the Workday requirement(s) it was listed under in
+// `requirements`, so analyze() can flag K&U claims it can't match.
 export function parseProgress(text) {
   const lines = text
     .replace(/\u00a0/g, ' ')
@@ -39,12 +50,18 @@ export function parseProgress(text) {
     .map(l => l.trim())
     .filter(l => l.length > 0);
 
-  const courseRe = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?)\s*-\s*(.+)$/;
+  const courseRe = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?|CORE)\s*-\s*(.+)$/;
   const exemptionRe = /^(.+?\bExemption)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
   const overrideRe = /\(Override Assigned\)/;
+  const periodRe = /^\d{4}\s+(Fall|Spring|Summer|Winter|Interim)$/i;
+  const hoursRe = /^\d+(?:\.\d+)?$/;
+  const gradeRe = /^[A-Z]{1,2}[+-]?$/;
+  // Status/remaining lines and page chrome that aren't requirement names.
+  const notRequirementRe = /^(Satisfied|Not Satisfied|In Progress|Satisfied With|Minimum\b.*|.*Sort and filter column)$/;
   const raw = [];
   const exemptions = [];
   const overrides = new Set();
+  let requirement = null;
 
   for (let i = 0; i < lines.length; i++) {
     // Detect overrides on requirement lines
@@ -63,7 +80,7 @@ export function parseProgress(text) {
       // Look ahead for hours
       let hours = 0;
       for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-        if (/^\d+$/.test(lines[j])) { hours = parseInt(lines[j]); break; }
+        if (hoursRe.test(lines[j])) { hours = parseFloat(lines[j]); break; }
         if (courseRe.test(lines[j])) break;
       }
       if (target) {
@@ -77,7 +94,14 @@ export function parseProgress(text) {
 
     // Detect course lines
     const cm = lines[i].match(courseRe);
-    if (!cm) continue;
+    if (!cm) {
+      // Any other line that isn't a field value names the requirement that
+      // following courses are listed under.
+      if (!periodRe.test(lines[i]) && !hoursRe.test(lines[i]) && !gradeRe.test(lines[i]) && !notRequirementRe.test(lines[i])) {
+        requirement = lines[i].replace(/\s*\(Click for more details\)/g, '').replace(/\s*\(Override Assigned\)/g, '').trim();
+      }
+      continue;
+    }
 
     let title = cm[3].trim();
     let status = 'completed';
@@ -96,19 +120,21 @@ export function parseProgress(text) {
     for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
       const line = lines[j];
       if (courseRe.test(line) || exemptionRe.test(line)) break;
-      if (/^\d{4}\s+(Fall|Spring|Summer|Winter|Interim)$/i.test(line)) {
+      if (periodRe.test(line)) {
         period = line;
-      } else if (/^\d+$/.test(line) && hours === 0) {
-        hours = parseInt(line);
-      } else if (/^[A-Z]{1,2}[+-]?$/.test(line) || line === 'CR') {
+      } else if (hoursRe.test(line) && hours === 0) {
+        hours = parseFloat(line);
+      } else if (gradeRe.test(line) || line === 'CR') {
         grade = line;
       }
     }
 
-    raw.push({ code: cm[1] + ' ' + cm[2], title, grade, hours, status, period });
+    raw.push(courseEntry(cm[1], cm[2], { title, grade, hours, status, period,
+      requirements: requirement ? [requirement] : [] }));
   }
 
-  // Deduplicate by code/title; keep first occurrence.
+  // Deduplicate by code/title; keep first occurrence, but remember every
+  // requirement the course was listed under.
   const byCode = new Map();
   for (const c of raw) {
     if (c.code === null) {
@@ -117,6 +143,9 @@ export function parseProgress(text) {
     }
     if (!byCode.has(c.code)) {
       byCode.set(c.code, { ...c });
+    } else {
+      const kept = byCode.get(c.code);
+      for (const r of c.requirements) if (!kept.requirements.includes(r)) kept.requirements.push(r);
     }
   }
   const courses = Array.from(byCode.values());
@@ -246,6 +275,34 @@ function mergeLabHoursForAnalysis(transcript) {
   return [...Array.from(byCode.values()), ...nonCourseEntries];
 }
 
+const KU_REQUIREMENT_RE = /Knowledge and Understanding/i;
+// A placeholder counts where its subject's K&U courses do, if at least this
+// share of them sit in one (category, sub-discipline).
+const PLACEHOLDER_MIN_SHARE = 0.75;
+
+// Guess the K&U category for a placeholder like "HIST CORE" from the subject
+// prefix, using every course listed on the page or in extraCourses. Returns
+// { category, subDiscipline } or null when no single home clearly dominates.
+export function inferPlaceholderCategory(subject, cats, extraCourses = {}) {
+  const counts = new Map();
+  for (const cat of cats) {
+    if (!KU_NAMES.includes(cat.name) || !cat.courses) continue;
+    const codes = new Map(cat.courses.map(c => [c.code, c.subDiscipline]));
+    for (const [code, sub] of Object.entries(extraCourses[cat.name] || {})) if (!codes.has(code)) codes.set(code, sub);
+    for (const [code, sub] of codes) {
+      if (code.split(' ')[0] !== subject) continue;
+      const key = JSON.stringify([cat.name, sub ?? null]);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  if (total < 2) return null;
+  const [bestKey, best] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (best / total < PLACEHOLDER_MIN_SHARE) return null;
+  const [category, subDiscipline] = JSON.parse(bestKey);
+  return { category, subDiscipline };
+}
+
 // options.extraCourses: { [category name]: { [course code]: sub-discipline or null } }
 // Additional course→requirement mappings (e.g. KNOWN_COURSE_CATEGORIES, the union
 // of all known catalogs). Additive only: a taken course listed here counts toward
@@ -284,7 +341,15 @@ export function analyze(cats, transcript, options = {}) {
     for (const c of cat.courses) { if (!c2c[c.code]) c2c[c.code] = []; c2c[c.code].push(cat.name); }
   }
   const pageCatNames = new Set(cats.map(c => c.name).filter(Boolean));
-  for (const [name, codes] of Object.entries(extraCourses)) {
+  // Placeholder transfer credit: assumed category from its subject prefix.
+  const assumedCourses = {};
+  for (const c of mergedTranscript) {
+    if (!c.isPlaceholder || c.status === 'exemption') continue;
+    const guess = inferPlaceholderCategory(c.subject, cats, extraCourses);
+    if (!guess) continue;
+    (assumedCourses[guess.category] ??= {})[c.code] = guess.subDiscipline;
+  }
+  for (const [name, codes] of [...Object.entries(extraCourses), ...Object.entries(assumedCourses)]) {
     if (!pageCatNames.has(name)) continue;
     for (const code of Object.keys(codes)) {
       if (!c2c[code]) c2c[code] = [];
@@ -324,6 +389,9 @@ export function analyze(cats, transcript, options = {}) {
     const extraHere = Object.entries(extraCourses[cat.name] || {})
       .filter(([code]) => !pageCodes.has(code) && allActiveSet.has(code))
       .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isFromOtherCatalog: true }));
+    for (const [code, subDiscipline] of Object.entries(assumedCourses[cat.name] || {})) {
+      if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isAssumed: true });
+    }
     const takenHere = [...cat.courses, ...extraHere].filter(c => allActiveSet.has(c.code));
     let hrsRaw = 0; const hByD = {};
     const counted = new Set();  // a lecture and its merged lab share one transcript entry
@@ -382,9 +450,29 @@ export function analyze(cats, transcript, options = {}) {
       hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length,
       inProgressCount, plannedCount, courseAnnotations });
   }
+  // Courses Workday counts toward K&U (or placeholder core credit) that landed in
+  // no K&U category here: the student's K&U totals may be understated.
+  const countedInKU = new Set();
+  for (const r of results) {
+    if (!KU_NAMES.includes(r.name) || !r.courseAnnotations) continue;
+    for (const c of r.courseAnnotations) if (allActiveSet.has(c.code)) countedInKU.add(c.code);
+  }
+  const kuWarnings = [];
+  for (const c of mergedTranscript) {
+    if (!c.code || countedInKU.has(c.code)) continue;
+    if (c.isPlaceholder) {
+      kuWarnings.push({ code: c.code, title: c.title, hours: c.hours,
+        reason: 'placeholder credit whose K&U category can\'t be inferred from "' + c.subject + '"' });
+    } else if ((c.requirements || []).some(r => KU_REQUIREMENT_RE.test(r))) {
+      kuWarnings.push({ code: c.code, title: c.title, hours: c.hours,
+        reason: 'Workday counts it toward Knowledge and Understanding, but no known catalog lists it in a K&U category' });
+    }
+  }
+
   return {
     results,
     transcript,
+    kuWarnings,
     plannedCourses: Array.from(plannedSet),
     overrides: options.overrides || new Set(),
     exemptions: exemptionEntries,

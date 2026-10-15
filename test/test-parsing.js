@@ -338,3 +338,85 @@ describe('parseCoreProgram', () => {
     assert.equal(tc.courses[1].subDiscipline, null);
   });
 });
+
+// ---- Placeholder core credit and fractional hours ----
+// From a student's K&U rows: AP/transfer core credit with no course number
+// ("HIST CORE") and fractional transfer hours.
+
+describe('parseProgress: placeholder credit, fractional hours, requirements', () => {
+  const kuText = `Knowledge and Understanding - minimum 26 hours (Click for more details)
+In Progress
+Minimum Combination Required
+CHEM 101 - General Chemistry I
+2024 Fall
+3
+HIST CORE - AP/Transfer History Core (Transfer Credit)
+3
+ARTS CORE - Transfer Fine Arts Core (Transfer Credit)
+3
+GERM 201 - Intermediate German I (Transfer Credit)
+1.5
+Rhetoric in Disciplines
+Not Satisfied
+Minimum 1 Course(s)
+CS 108 - Introduction to Computing (In Progress)
+2026 Fall
+3`;
+
+  it('parses placeholder "SUBJ CORE" codes', () => {
+    const { courses } = parseProgress(kuText);
+    const hist = courses.find(c => c.code === 'HIST CORE');
+    assert.ok(hist, 'should find HIST CORE');
+    assert.equal(hist.isPlaceholder, true);
+    assert.equal(hist.subject, 'HIST');
+    assert.equal(hist.status, 'transfer');
+    assert.equal(hist.title, 'AP/Transfer History Core');
+    assert.equal(hist.hours, 3);
+    assert.ok(courses.find(c => c.code === 'ARTS CORE'));
+    assert.equal(courses.find(c => c.code === 'CHEM 101').isPlaceholder, undefined);
+  });
+
+  it('parses fractional hours', () => {
+    const { courses } = parseProgress(kuText);
+    assert.equal(courses.find(c => c.code === 'GERM 201').hours, 1.5);
+  });
+
+  it('records the requirement each course is listed under', () => {
+    const { courses } = parseProgress(kuText);
+    const ku = 'Knowledge and Understanding - minimum 26 hours';
+    for (const code of ['CHEM 101', 'HIST CORE', 'ARTS CORE', 'GERM 201']) {
+      assert.deepEqual(courses.find(c => c.code === code).requirements, [ku], code);
+    }
+    assert.deepEqual(courses.find(c => c.code === 'CS 108').requirements, ['Rhetoric in Disciplines']);
+  });
+
+  it('keeps every requirement a duplicated course is listed under', () => {
+    const text = `Knowledge and Understanding - minimum 26 hours (Click for more details)
+In Progress
+COMM 101 - Oral Rhetoric (In Progress)
+2026 Fall
+4
+COMM 101
+In Progress
+COMM 101 - Oral Rhetoric (In Progress)
+2026 Fall
+4`;
+    const comm = parseProgress(text).courses.find(c => c.code === 'COMM 101');
+    assert.deepEqual(comm.requirements, ['Knowledge and Understanding - minimum 26 hours', 'COMM 101']);
+  });
+});
+
+describe('parseTranscript: placeholder credit', () => {
+  it('parses "SUBJ CORE" rows', () => {
+    const text = `Opens in new window
+HIST CORE - AP/Transfer History Core
+CR
+0.000
+3
+0.000`;
+    const [hist] = parseTranscript(text);
+    assert.equal(hist.code, 'HIST CORE');
+    assert.equal(hist.isPlaceholder, true);
+    assert.equal(hist.hours, 3);
+  });
+});

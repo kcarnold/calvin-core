@@ -367,3 +367,90 @@ describe('lab codes listed in a requirement', () => {
     assert.equal(r.courseAnnotations.find(c => c.code === 'ENGR 303L').isInProgress, true);
   });
 });
+
+// ---- Placeholder transfer credit and unmatched K&U claims ----
+// AP/transfer core credit can arrive as "HIST CORE - AP/Transfer History Core"
+// with no course number. We assume it counts where most K&U courses with that
+// subject prefix do, and flag K&U credit we can't place.
+
+describe('placeholder core credit ("SUBJ CORE")', () => {
+  const withUnion = { extraCourses: KNOWN_COURSE_CATEGORIES };
+  const placeholder = (subject, hours, title) => ({
+    ...makeCourse(subject + ' CORE', hours, { status: 'transfer', grade: 'CR', title }),
+    isPlaceholder: true, subject,
+  });
+
+  it('HIST CORE counts toward Humanities as History, marked assumed', () => {
+    const analysis = analyze(loadCategories(), [placeholder('HIST', 3, 'AP/Transfer History Core')], withUnion);
+    const r = getResult(analysis, 'Humanities');
+    assert.equal(r.status, 'satisfied');
+    assert.deepEqual(r.hoursByDiscipline, { History: 3 });
+    const ann = r.courseAnnotations.find(c => c.code === 'HIST CORE');
+    assert.equal(ann.isAssumed, true);
+    assert.equal(ann.element, null);
+    assert.equal(analysis.kuWarnings.length, 0);
+  });
+
+  it('assumed History hours share the History discipline cap', () => {
+    const analysis = analyze(loadCategories(), [placeholder('HIST', 3), makeCourse('HIST 152', 4)], withUnion);
+    const r = getResult(analysis, 'Humanities');
+    assert.deepEqual(r.hoursByDiscipline, { History: 7 });
+    assert.ok(r.maxedDisciplines.has('History'));
+  });
+
+  it('works on the 2025-26 page too', () => {
+    const analysis = analyze(loadCategories('24'), [placeholder('ARTS', 3)], withUnion);
+    assert.deepEqual(getResult(analysis, 'Arts, Oral Rhetoric, Visual Rhetoric').hoursByDiscipline, { 'Visual Arts': 3 });
+  });
+
+  it('ambiguous subject (HNRS) is not guessed; warns instead', () => {
+    const analysis = analyze(loadCategories(), [placeholder('HNRS', 4)], withUnion);
+    assertKU(analysis, { total: 0 });
+    assert.deepEqual(analysis.kuWarnings.map(w => w.code), ['HNRS CORE']);
+  });
+
+  it('unknown subject warns', () => {
+    const analysis = analyze(loadCategories(), [placeholder('ZZZ', 3)], withUnion);
+    assert.deepEqual(analysis.kuWarnings.map(w => w.code), ['ZZZ CORE']);
+  });
+
+  it("the reported student's K&U rows all land somewhere", () => {
+    const transcript = [
+      makeCourse('CHEM 101', 3),
+      placeholder('HIST', 3, 'AP/Transfer History Core'),
+      makeCourse('COMM 101', 3, { status: 'transfer' }),
+      placeholder('ARTS', 3, 'Transfer Fine Arts Core'),
+      makeCourse('PHYS 221', 4, { status: 'transfer' }),
+      makeCourse('MATH 171', 4, { status: 'transfer' }),
+      makeCourse('ECON 191', 3, { status: 'transfer' }),
+      makeCourse('GERM 201', 1.5, { status: 'transfer' }),
+    ];
+    const analysis = analyze(loadCategories(), transcript, withUnion);
+    assert.equal(analysis.kuWarnings.length, 0);
+    assertStatus(analysis, 'Humanities', { hours: 3 });
+    assertStatus(analysis, 'Arts, Oral Rhetoric, Visual Rhetoric', { hours: 6 });
+    assertStatus(analysis, 'World Languages II', { hours: 1.5 });
+    // Natural Sciences 7h capped at 6: 1.5 + 6 + 3 + 4 + 6 + 3
+    assertKU(analysis, { total: 23.5, categories: 6 });
+  });
+});
+
+describe('K&U claims we cannot match', () => {
+  const KU_REQ = 'Knowledge and Understanding - minimum 26 hours';
+
+  it('warns when Workday lists a course under K&U that no K&U category has', () => {
+    const transcript = [{ ...makeCourse('ENGR 101', 4), requirements: [KU_REQ] }];
+    const analysis = analyze(loadCategories(), transcript, { extraCourses: KNOWN_COURSE_CATEGORIES });
+    assert.deepEqual(analysis.kuWarnings.map(w => w.code), ['ENGR 101']);
+  });
+
+  it('no warning when the K&U course matches', () => {
+    const transcript = [{ ...makeCourse('HIST 152', 4), requirements: [KU_REQ] }];
+    assert.equal(analyze(loadCategories(), transcript).kuWarnings.length, 0);
+  });
+
+  it('no warning for non-K&U courses outside K&U lists', () => {
+    const transcript = [{ ...makeCourse('ENGR 101', 4), requirements: ['ENGR 101'] }];
+    assert.equal(analyze(loadCategories(), transcript).kuWarnings.length, 0);
+  });
+});

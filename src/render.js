@@ -12,7 +12,7 @@ export function clearRenderedState() {
   ['ca-styles', 'ca-toc-styles'].forEach(id => {
     document.getElementById(id)?.remove();
   });
-  document.querySelectorAll('.ca-legend,.ca-summary-panel,.ca-badge,.ca-hours-note,#ca-toc,.ca-disclaimer,.ca-transcript-section').forEach(e => {
+  document.querySelectorAll('.ca-legend,.ca-summary-panel,.ca-badge,.ca-hours-note,#ca-toc,.ca-disclaimer,.ca-ku-warning,.ca-transcript-section').forEach(e => {
     e.remove();
   });
   document.querySelectorAll('[class*="ca-course-"],[class*="ca-category-"]').forEach(e => {
@@ -36,7 +36,7 @@ function attachPlanToggle(li, courseCode, isPlanned, onTogglePlanned) {
   li.appendChild(btn);
 }
 
-export function render({ results, kuSummary, transcript, plannedCourses }, options = {}) {
+export function render({ results, kuSummary, transcript, plannedCourses, kuWarnings = [] }, options = {}) {
   const onTogglePlanned = options.onTogglePlanned;
   clearRenderedState();
 
@@ -115,6 +115,11 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
     .ca-disclaimer { font-size:12px; color:#7a5c00; background:#fffbea; border:1px solid #e8d87a;
       border-radius:6px; padding:7px 12px; margin:10px 0 6px 0;
       font-family:system-ui,-apple-system,sans-serif; line-height:1.5; }
+    .ca-ku-warning { font-size:13px; color:#7c2d12; background:#fff1e6; border:1px solid #f0a868;
+      border-radius:6px; padding:8px 12px; margin:10px 0 6px 0;
+      font-family:system-ui,-apple-system,sans-serif; line-height:1.5; }
+    .ca-ku-warning ul { margin:4px 0 4px 18px; padding:0; }
+    .ca-hours-note.ca-assumed-note { color:#7c2d12; background:#fff1e6; }
     .ca-transcript-section { font-family:system-ui,-apple-system,sans-serif; margin:24px 0 16px 0; }
     .ca-transcript-section h3 { font-size:14px; color:#333!important; margin:0 0 8px 0; }
     .ca-transcript-table { width:100%; border-collapse:collapse; font-size:12px; }
@@ -272,6 +277,23 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
   firstCore.parentElement.insertBefore(panel, firstCore);
   firstCore.parentElement.insertBefore(disclaimer, firstCore);
 
+  if (kuWarnings.length > 0) {
+    const warning = document.createElement('div');
+    warning.className = 'ca-ku-warning';
+    const intro = document.createElement('strong');
+    intro.textContent = '\u26A0\uFE0F Some K&U credit couldn\u2019t be matched to a K&U category, so your K&U totals above may be too low:';
+    const list = document.createElement('ul');
+    for (const w of kuWarnings) {
+      const li = document.createElement('li');
+      li.textContent = w.code + (w.title ? ' \u2014 ' + w.title : '') + ' (' + w.hours + 'h): ' + w.reason + '.';
+      list.appendChild(li);
+    }
+    const outro = document.createElement('span');
+    outro.textContent = 'Check Academic Progress in Workday or ask the Registrar where these count.';
+    warning.append(intro, list, outro);
+    firstCore.parentElement.insertBefore(warning, firstCore);
+  }
+
   // ===== FLOATING TOC =====
   const tocContainer = document.createElement('div');
   tocContainer.id = 'ca-toc';
@@ -400,6 +422,17 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
       block.querySelector('p')?.after(note);
     }
 
+    const assumedCourses = r.courseAnnotations.filter(c => c.isAssumed);
+    if (assumedCourses.length > 0) {
+      const note = document.createElement('span');
+      note.className = 'ca-hours-note ca-assumed-note';
+      note.textContent = '\u26A0\uFE0F Assumed: '
+        + assumedCourses.map(c => c.code + (c.title ? ' \u2014 ' + c.title : '') + ' (' + c.hours + 'h'
+          + (c.subDiscipline ? ', as ' + c.subDiscipline : '') + ')').join(', ')
+        + '. Placeholder credit with no course number; counted here based on its subject prefix. Confirm with the Registrar.';
+      block.querySelector('p')?.after(note);
+    }
+
     if (r.status === 'complete' && r.type !== 'tag') block.classList.add('ca-category-complete');
 
     for (const c of r.courseAnnotations) {
@@ -452,18 +485,20 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
       if (!r.courseAnnotations) continue;
       for (const c of r.courseAnnotations) {
         if (!courseToCategories[c.code]) courseToCategories[c.code] = [];
-        courseToCategories[c.code].push(r.name);
+        courseToCategories[c.code].push(r.name + (c.isAssumed ? ' (assumed)' : ''));
       }
     }
+    const warnedCodes = new Set(kuWarnings.map(w => w.code));
 
     const section = document.createElement('div');
     section.className = 'ca-transcript-section';
     let rows = '';
     for (const c of transcript) {
       const cats = courseToCategories[c.code] || [];
-      const catsCell = cats.length > 0
+      const catsCell = (cats.length > 0
         ? `<span class="ca-transcript-cats">${cats.join(', ')}</span>`
-        : `<span class="ca-transcript-none">not in core lists</span>`;
+        : `<span class="ca-transcript-none">not in core lists</span>`)
+        + (warnedCodes.has(c.code) ? ' <span style="color:#7c2d12">\u26A0\uFE0F K&amp;U category unknown</span>' : '');
       const statusLabel = c.status === 'in-progress' ? ' <span style="color:' + COLORS.inProgress + '">⏳</span>'
         : c.status === 'transfer' ? ' <span style="color:' + COLORS.transfer + '">↗</span>' : '';
       rows += `<tr><td><strong>${c.code}</strong>${statusLabel}</td><td>${c.title}</td><td>${c.grade || '—'}</td><td>${c.hours}h</td><td>${catsCell}</td></tr>`;
