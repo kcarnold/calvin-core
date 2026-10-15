@@ -664,10 +664,22 @@ export function analyze(cats, transcript, options = {}) {
         grade: isActive ? (tc?.grade || '') : '', hours: isActive ? (tc?.hours || 0) : 0,
         isTransfer: tc?.status === 'transfer' };
     });
+    // Hours more that could still count here: up to maxHours, and only in disciplines
+    // below their cap that still have courses to take. null when there's no maximum.
+    let roomHours = null;
+    if (cat.reqType === 'hour-range' && cat.maxHours !== null) {
+      roomHours = hasRemainingCourseOptions ? cat.maxHours - hrsEffective : 0;
+      if (subDisciplines) {
+        const disciplineRoom = Object.values(subDisciplines)
+          .filter(d => d.untakenCount > 0).reduce((s, d) => s + Math.max(0, d.cap - d.hoursEarned), 0);
+        roomHours = Math.min(roomHours, disciplineRoom);
+      }
+      roomHours = Math.max(0, roomHours);
+    }
     const plannedCount = courseAnnotations.filter(c => c.isPlanned).length;
     const inProgressCount = courseAnnotations.filter(c => c.isInProgress).length;
     results.push({ ...cat, status, hoursEarned: hrsRaw, hoursEffective: hrsEffective,
-      hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length,
+      hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length, roomHours,
       inProgressCount, plannedCount, courseAnnotations });
   }
   // Courses Workday counts toward K&U (or placeholder core credit) that landed in

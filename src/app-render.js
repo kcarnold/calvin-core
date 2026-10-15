@@ -261,10 +261,47 @@ export function renderApp(root, state) {
         KU_NAMES.includes(g.items[0].cat.name) && ku ? kuMeter(ku) : null,
         h('ul', { class: 'summary-chips' }, g.items.map(({ cat, r }) => {
           const s = statusInfo(r) || { cls: 'muted', text: '' };
-          const label = KU_NAMES.includes(cat.name) ? `${fmtHours(r.hoursEffective)} hrs` : s.text;
+          const isKU = KU_NAMES.includes(cat.name);
+          const label = isKU ? kuChipLabel(r) : s.text;
           return h('li', {}, h('a', { href: '#' + cat.slug, class: 'summary-chip status-' + s.cls },
-            h('span', { class: 'chip-name' }, cat.name), h('span', { class: 'chip-value' }, label)));
-        })))));
+            h('span', { class: 'chip-name' }, cat.name), h('span', { class: 'chip-value' }, label),
+            isKU && r.roomHours != null ? h('span', { class: 'chip-room' + (r.roomHours > 0 ? ' has-room' : '') },
+              r.roomHours > 0 ? `Room for ${fmtHours(r.roomHours)} more` : 'Full') : null));
+        })),
+        KU_NAMES.includes(g.items[0].cat.name) && ku ? kuOpportunities(ku, g.items.map(i => i.r)) : null)));
+  }
+
+  function kuChipLabel(r) {
+    return r.maxHours != null ? `${fmtHours(r.hoursEffective)} of ${r.maxHours} hrs` : `${fmtHours(r.hoursEffective)} hrs`;
+  }
+
+  // Where more K&U hours would still count, most useful first: categories below
+  // their minimum, then unused ones (if more categories are needed), then the rest.
+  function kuOpportunities(ku, results) {
+    if (ku.met) return null;
+    const needHours = Math.max(0, ku.requiredHours - ku.totalHours);
+    const needCategories = ku.categoriesUsed < ku.requiredCategories;
+    const rank = r => r.status === 'incomplete' ? 0 : needCategories && r.hoursEarned === 0 ? 1 : 2;
+    const open = results.filter(r => r.roomHours > 0)
+      .sort((a, b) => rank(a) - rank(b) || b.roomHours - a.roomHours);
+    const full = results.filter(r => r.roomHours === 0 && r.hoursEarned > 0);
+    const totalRoom = open.reduce((s, r) => s + r.roomHours, 0);
+    const lead = [needHours > 0 ? `${fmtHours(needHours)} more hrs` : null,
+      needCategories ? `${ku.requiredCategories - ku.categoriesUsed} more ${ku.requiredCategories - ku.categoriesUsed === 1 ? 'category' : 'categories'}` : null]
+      .filter(Boolean).join(' and ');
+    return h('div', { class: 'ku-opportunities' },
+      h('p', { class: 'ku-opp-lead' }, lead ? `K&U needs ${lead}. Where more hours would count:` : 'Where more K&U hours would count:'),
+      open.length ? h('ul', {}, open.map(r => {
+        const why = [];
+        if (r.status === 'incomplete') why.push(`${fmtHours(r.minHours - r.hoursEarned)} needed for its minimum`);
+        else if (needCategories && r.hoursEarned === 0) why.push('adds a category');
+        const maxed = [...(r.maxedDisciplines || [])];
+        if (maxed.length) why.push(`not ${maxed.join(' or ')}, which ${maxed.length === 1 ? 'is' : 'are'} full`);
+        return h('li', {}, h('a', { href: '#' + r.slug }, r.name), `: up to ${fmtHours(r.roomHours)} more hrs`,
+          why.length ? ` (${why.join('; ')})` : '');
+      })) : null,
+      full.length ? h('p', { class: 'ku-opp-full' }, 'Full, so more hours there won’t count: ', categoryLinks(full.map(r => r.name)), '.') : null,
+      totalRoom < needHours ? h('p', { class: 'ku-opp-full' }, `Only ${fmtHours(totalRoom)} more hrs can count across these categories.`) : null);
   }
 
   function kuMeter(ku) {
