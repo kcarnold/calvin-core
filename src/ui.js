@@ -220,7 +220,7 @@ function showAnalysis(input) {
   ];
   if (inProgressCount > 0) statusParts.push(inProgressCount + ' in-progress');
   if (plannedCourses.size > 0) statusParts.push(plannedCourses.size + ' planned');
-  if (analysis.kuWarnings.length > 0) statusParts.push(analysis.kuWarnings.length + ' K&U course(s) not matched (see warning below)');
+  if (analysis.warnings.length > 0) statusParts.push(analysis.warnings.length + ' course(s) Workday counts that we couldn\u2019t match (see warning below)');
   setStatus(statusParts.join(', ') + '.', 'success');
   console.log('[Core Annotator]', courses.length, 'courses (' + format + '):', courses.filter(c => c.code).map(c => c.code + '(' + c.hours + 'h)'));
   console.log('[Core Annotator] K&U:', analysis.kuSummary);

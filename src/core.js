@@ -487,6 +487,25 @@ function mergeLabHoursForAnalysis(transcript) {
 }
 
 const KU_REQUIREMENT_RE = /Knowledge and Understanding/i;
+// Workday Academic Progress requirement names → catalog requirement names.
+// (K&U is one Workday requirement covering all six K&U categories.)
+const WORKDAY_REQUIREMENTS = [
+  [/Communities & Commitments/i, 'Community and Commitments'],
+  [/^Foundations of Christianity I Core$/i, 'Foundations of Christianity I'],
+  [/^Foundations of Christianity II Core$/i, 'Foundations of Christianity II'],
+  [/Foundational Writing/i, 'Foundational Writing'],
+  [/Health & Movement - Fitness/i, 'Health and Movement (Personal Fitness)'],
+  [/Health & Movement - Recreation/i, 'Health and Movement (Leisure, Sport, and Skills)'],
+  [/^World Languages I Core$/i, 'World Languages I'],
+  [/Diversity & Difference/i, 'Diversity and Difference (Tag)'],
+  [/Environmental Sustainability/i, 'Environmental Sustainability (Tag)'],
+  [/Global Regions and Cultures/i, 'Global Regions and Cultures (Tag)'],
+  [/^Rhetoric in Disciplines$/i, 'Rhetoric in Disciplines'],
+  [/Contemporary Challenges and Enduring Questions/i, 'Contemporary Challenges and Enduring Questions'],
+];
+export function workdayRequirementCategory(requirement) {
+  return WORKDAY_REQUIREMENTS.find(([re]) => re.test(requirement))?.[1] ?? null;
+}
 // A placeholder counts where its subject's K&U courses do, if at least this
 // share of them sit in one (category, sub-discipline).
 const PLACEHOLDER_MIN_SHARE = 0.75;
@@ -567,6 +586,15 @@ export function analyze(cats, transcript, options = {}) {
       if (!c2c[code].includes(name)) c2c[code].push(name);
     }
   }
+  // Courses Workday's Academic Progress lists under a requirement: { [category]: Set(code) }.
+  const workdayCourses = {};
+  for (const c of mergedTranscript) {
+    if (!c.code) continue;
+    for (const req of c.requirements || []) {
+      const name = workdayRequirementCategory(req);
+      if (name) (workdayCourses[name] ??= new Set()).add(c.code);
+    }
+  }
   const kuAggregate = cats.find(c => c.kuAggregate)?.kuAggregate;
   const kuH = {}; let kuTotal = 0, kuCount = 0;
   const results = [];
@@ -607,6 +635,15 @@ export function analyze(cats, transcript, options = {}) {
       .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isFromOtherCatalog: true }));
     for (const [code, subDiscipline] of Object.entries(assumedCourses[cat.name] || {})) {
       if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isAssumed: true });
+    }
+    // Pick-one: Workday is the official record, so a course it lists here counts
+    // (overrides, section-specific tags). Not for hour-range (needs a sub-discipline) or
+    // alternatives (Workday lists ENGL 100 before ENGL 102 is done); those are warned below.
+    if (cat.reqType === 'pick-one' && !cat.alternatives) {
+      for (const code of workdayCourses[cat.name] || []) {
+        if (pageCodes.has(code) || extraHere.some(e => e.code === code) || !allActiveSet.has(code)) continue;
+        extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline: null, element: null, isFromWorkday: true });
+      }
     }
     const takenHere = [...cat.courses, ...extraHere].filter(c => countsHere(c.code));
     let hrsRaw = 0; const hByD = {};
@@ -682,29 +719,45 @@ export function analyze(cats, transcript, options = {}) {
       hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length, roomHours,
       inProgressCount, plannedCount, courseAnnotations });
   }
-  // Courses Workday counts toward K&U (or placeholder core credit) that landed in
-  // no K&U category here: the student's K&U totals may be understated.
-  const countedInKU = new Set();
+  // Courses Workday counts toward a requirement (or placeholder core credit) that
+  // don't count toward it here: the student's results may be understated.
+  // `requirement` is a catalog requirement name, or 'K&U' for the K&U categories as a whole.
+  const countedIn = {};
   for (const r of results) {
-    if (!KU_NAMES.includes(r.name) || !r.courseAnnotations) continue;
-    for (const c of r.courseAnnotations) if (allActiveSet.has(c.code) && !c.isExcludedTransfer) countedInKU.add(c.code);
+    const key = KU_NAMES.includes(r.name) ? 'K&U' : r.name;
+    for (const c of r.courseAnnotations || []) {
+      if (allActiveSet.has(c.code) && !c.isExcludedTransfer) (countedIn[key] ??= new Set()).add(c.code);
+    }
   }
-  const kuWarnings = [];
+  const warnings = [];
   for (const c of mergedTranscript) {
-    if (!c.code || countedInKU.has(c.code)) continue;
+    if (!c.code) continue;
+    const warn = (requirement, reason) => {
+      if (!countedIn[requirement]?.has(c.code)) warnings.push({ code: c.code, title: c.title, hours: c.hours, requirement, reason });
+    };
     if (c.isPlaceholder) {
-      kuWarnings.push({ code: c.code, title: c.title, hours: c.hours,
-        reason: 'placeholder credit whose K&U category can\'t be inferred from "' + c.subject + '"' });
-    } else if ((c.requirements || []).some(r => KU_REQUIREMENT_RE.test(r))) {
-      kuWarnings.push({ code: c.code, title: c.title, hours: c.hours,
-        reason: 'Workday counts it toward Knowledge and Understanding, but no known catalog lists it in a K&U category' });
+      warn('K&U', 'placeholder credit whose K&U category can\'t be inferred from "' + c.subject + '"');
+      continue;
+    }
+    const claimed = new Set();
+    for (const req of c.requirements || []) {
+      const name = KU_REQUIREMENT_RE.test(req) ? 'K&U' : workdayRequirementCategory(req);
+      if (name === 'K&U' || pageCatNames.has(name)) claimed.add(name);
+    }
+    for (const name of claimed) {
+      // Transfer credit a requirement doesn't accept is flagged on its own.
+      if (c.status === 'transfer' && name !== 'K&U' && isTransferExcluded(cats.find(x => x.name === name))) continue;
+      if (exemptedCategories.has(name)) continue;
+      warn(name, name === 'K&U'
+        ? 'Workday counts it toward Knowledge and Understanding, but no known catalog lists it in a K&U category'
+        : `Workday counts it toward ${name}, but no known catalog lists it there`);
     }
   }
 
   return {
     results,
     transcript,
-    kuWarnings,
+    warnings,
     plannedCourses: Array.from(plannedSet),
     overrides: options.overrides || new Set(),
     exemptions: exemptionEntries,

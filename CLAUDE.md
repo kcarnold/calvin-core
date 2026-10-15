@@ -94,7 +94,12 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 
 - AP/transfer core credit can arrive with no course number: `HIST CORE - AP/Transfer History Core (Transfer Credit)`. Parsers set `isPlaceholder` + `subject`.
 - `inferPlaceholderCategory` assumes it counts where ≥75% of that subject's K&U courses (page + union) sit, as that sub-discipline (HIST → Humanities/History, ARTS → Arts/Visual Arts). Ambiguous subjects (HNRS) aren't guessed. Assumed courses get `isAssumed` annotations with no `element`; render shows an orange "Assumed" note on the block.
-- `analysis.kuWarnings`: placeholders we couldn't place, and courses Workday lists under K&U that land in no K&U category. Render shows a warning box above the summary; the launcher status mentions the count.
+- `analysis.warnings` (`{ code, title, hours, requirement, reason }`, `requirement` a catalog name or `'K&U'`): placeholders we couldn't place, and courses Workday lists under a requirement that don't count toward it here (e.g. under K&U but in no K&U category). Render shows a warning box above the summary; the launcher status mentions the count.
+
+## Workday Requirement Listings
+
+- `WORKDAY_REQUIREMENTS` / `workdayRequirementCategory` in `core.js` map Academic Progress requirement names ("Global Regions and Cultures Core") to catalog names. `test-xlsx.js` checks every core requirement in the sample export maps.
+- Pick-one requirements (without `alternatives`) count a course Workday lists under them even if no catalog does (overrides, section-specific tags): `isFromWorkday` annotation, no `element`, shown as a labeled `.extra-course` (provenance `workday`). Hour-range and alternatives requirements don't; they get a `warnings` entry instead.
 
 ## Requirement Rules
 

@@ -226,7 +226,7 @@ async function main() {
     check(annotation('CS 108')?.hours, 4, 'CS 108 should count 4 hours in analysis (3 + 1 lab)');
     check(annotation('CHEM 101')?.hours, 4, 'CHEM 101 should count 4 hours in analysis (3 + 1 lab)');
     check(annotation('CS 384')?.isInProgress, true, 'CS 384 should be annotated as in-progress');
-    check(analysis.kuWarnings.length, 0, 'Should have no K&U warnings');
+    check(analysis.warnings.length, 0, 'Should have no K&U warnings');
   }
 
   console.error(`\n${passed} passed, ${failed} failed, ${unsnapshotted} unsnapshotted`);

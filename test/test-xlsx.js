@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { readXlsxRows } from '../src/xlsx.js';
-import { parseProgressRows, analyze } from '../src/core.js';
+import { parseProgressRows, analyze, workdayRequirementCategory } from '../src/core.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { loadCategories, getResult } from './helpers.js';
 
@@ -85,7 +85,28 @@ describe('parseProgressRows', () => {
     const analysis = analyze(loadCategories('25'), courses, { overrides, extraCourses: KNOWN_COURSE_CATEGORIES });
     assert.equal(getResult(analysis, 'World Languages I').status, 'complete');
     assert.equal(analysis.kuSummary.totalHours, 8);
-    assert.deepEqual(analysis.kuWarnings, []);
+    assert.deepEqual(analysis.warnings, []);
+  });
+
+  it('every core requirement in the sample maps to a catalog requirement', () => {
+    const names = loadCategories('25').map(c => c.name);
+    const reqs = sample().map(r => r[0]);
+    const core = reqs.slice(reqs.indexOf('Requirement') + 1, reqs.findIndex(r => /^Earn a /.test(r)));
+    assert.ok(core.length >= 12, core.join('; '));
+    for (const req of core) {
+      if (/Knowledge and Understanding/.test(req)) continue;
+      assert.ok(names.includes(workdayRequirementCategory(req.replace(/\s*\(Click for more details\)/, ''))), req);
+    }
+  });
+
+  it('counts a course Workday lists under a tag the catalog does not list it for', () => {
+    const rows = [
+      ['Requirement', 'Status', 'Remaining', 'Registrations Used', 'Academic Period', 'Hours'],
+      ['Global Regions and Cultures Core', 'Satisfied', '', 'ENGR 202 - Statics and Dynamics', '2025 Summer 2', '4'],
+    ];
+    const { courses } = parseProgressRows(rows);
+    const analysis = analyze(loadCategories('24'), courses, { extraCourses: KNOWN_COURSE_CATEGORIES });
+    assert.equal(getResult(analysis, 'Global Regions and Cultures (Tag)').status, 'complete');
   });
 
   it('maps columns by header name, reads grades, transfer credit, and overrides', () => {

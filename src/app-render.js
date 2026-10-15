@@ -174,8 +174,9 @@ export function renderApp(root, state) {
   }
 
   // Taken courses counted here that this catalog doesn't list here.
+  const isExtra = a => a.isFromOtherCatalog || a.isAssumed || a.isFromWorkday;
   function extraCourses(cat, r) {
-    const extras = (r?.courseAnnotations || []).filter(a => a.isFromOtherCatalog || a.isAssumed);
+    const extras = (r?.courseAnnotations || []).filter(isExtra);
     if (extras.length === 0) return null;
     return h('div', { class: 'extra-courses' },
       h('p', { class: 'extra-label' }, `Also counted here, though the ${catalogLabel(meta)} catalog doesn’t list them:`),
@@ -183,6 +184,8 @@ export function renderApp(root, state) {
         let why;
         if (a.isAssumed) {
           why = `Assumed: credit with no course number, placed here by its subject${a.subDiscipline ? ' (as ' + a.subDiscipline + ')' : ''}. Check Workday.`;
+        } else if (a.isFromWorkday) {
+          why = 'Listed for this requirement in your Workday Academic Progress (e.g. a section-specific tag or an override).';
         } else {
           const other = otherCatalogListing(cat.name, a.code);
           why = other
@@ -190,7 +193,8 @@ export function renderApp(root, state) {
               h('a', { href: courseUrl(other.meta.catoid, other.course.coid), target: '_blank', rel: 'noopener' }, catalogLabel(other.meta) + ' catalog'), '.')
             : 'Listed for this requirement in another catalog year.';
         }
-        return h('li', { class: 'extra-course', dataset: { kind: 'extra-course', code: a.code, provenance: a.isAssumed ? 'assumed' : 'other-catalog' } },
+        const provenance = a.isAssumed ? 'assumed' : a.isFromWorkday ? 'workday' : 'other-catalog';
+        return h('li', { class: 'extra-course', dataset: { kind: 'extra-course', code: a.code, provenance } },
           h('strong', {}, a.code), a.title ? ' ' + a.title : '', ` · ${fmtHours(a.hours)} hrs — `, why);
       })));
   }
@@ -215,7 +219,7 @@ export function renderApp(root, state) {
     const hasCourses = cat.courses?.length > 0;
     const defaultOpen = analysis ? (r?.status !== 'complete' && !r?.isExempt) : cat.courses?.length <= 12;
     const open = openLists.has(cat.slug) ? openLists.get(cat.slug) : defaultOpen;
-    const activeHere = (r?.courseAnnotations || []).filter(a => (a.isTaken || a.isInProgress) && !a.isFromOtherCatalog && !a.isAssumed);
+    const activeHere = (r?.courseAnnotations || []).filter(a => (a.isTaken || a.isInProgress) && !isExtra(a));
 
     return h('article', { class: 'req' + (cat.type === 'tag' ? ' is-tag' : '') + (status ? ' status-' + status.cls : ''),
       id: cat.slug, dataset: { coreIndex: cat.coreIndex } },
@@ -317,8 +321,10 @@ export function renderApp(root, state) {
   function warnings() {
     if (!analysis) return null;
     const items = [];
-    for (const w of analysis.kuWarnings || []) {
-      items.push(h('li', {}, h('strong', {}, w.code), w.title ? ' ' + w.title : '', ` (${fmtHours(w.hours)} hrs): ${w.reason}. Your K&U totals may be too low.`));
+    for (const w of analysis.warnings || []) {
+      items.push(h('li', {}, h('strong', {}, w.code), w.title ? ' ' + w.title : '', ` (${fmtHours(w.hours)} hrs): ${w.reason}. `,
+        w.requirement === 'K&U' ? 'Your K&U totals may be too low.'
+          : h('span', {}, 'So it isn’t counted toward ', categoryLinks([w.requirement]), ' here.')));
     }
     for (const r of analysis.results) {
       for (const a of r.courseAnnotations || []) {
@@ -337,6 +343,7 @@ export function renderApp(root, state) {
     const all = analysis.results.flatMap(r => (r.courseAnnotations || []).map(a => ({ r, a })));
     const active = all.filter(({ a }) => (a.isTaken || a.isInProgress) && !a.isExcludedTransfer);
     if (active.some(({ a }) => a.isFromOtherCatalog)) items.push('A course listed for a requirement in another catalog year is counted toward that requirement too (courses get renumbered between years).');
+    if (active.some(({ a }) => a.isFromWorkday)) items.push('A course your Workday Academic Progress lists under a requirement counts toward it, even if the catalog doesn’t list it there.');
     if (active.some(({ a }) => a.isAssumed)) items.push('Transfer or AP credit without a course number is placed by its subject, e.g. HIST counts as History.');
     const catByName = new Map(catalog.categories.filter(c => c.name).map(c => [c.name, c]));
     const unconfirmed = active.filter(({ r, a }) => (a.otherCategories || [])

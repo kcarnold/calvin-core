@@ -58,7 +58,8 @@ function render(catalog, transcript, withToc = false) {
 }
 
 // Exercises taken, in-progress, transfer (accepted and excluded), the
-// alternatives list, an other-catalog course, and placeholder credit.
+// alternatives list, an other-catalog course, placeholder credit, and a
+// course only Workday's Academic Progress lists for a requirement.
 const SAMPLE_TRANSCRIPT = [
   makeCourse('CORE 100', 2, { status: 'transfer' }),
   makeCourse('ENGL 100', 4),
@@ -67,6 +68,7 @@ const SAMPLE_TRANSCRIPT = [
   makeCourse('ENST 210', 4),
   makeCourse('COMM 200', 4, { status: 'in-progress' }),
   { code: 'ARTS CORE', subject: 'ARTS', isPlaceholder: true, title: 'AP Art', hours: 4, grade: 'CR', status: 'transfer' },
+  { ...makeCourse('ENGR 202', 4), title: 'Statics and Dynamics', requirements: ['Global Regions and Cultures Core'] },
 ];
 
 describe('app fidelity to the official catalog', () => {
@@ -120,8 +122,8 @@ describe('app fidelity to the official catalog', () => {
             assert.ok(li.closest('.course-list'), `${li.dataset.code} rendered outside a catalog list`);
           }
           for (const li of root.querySelectorAll('.extra-course')) {
-            assert.ok(['assumed', 'other-catalog'].includes(li.dataset.provenance), li.textContent);
-            assert.match(li.textContent, /Assumed|Listed for this requirement in the/);
+            assert.ok(['assumed', 'other-catalog', 'workday'].includes(li.dataset.provenance), li.textContent);
+            assert.match(li.textContent, /Assumed|Listed for this requirement in (the|your Workday)/);
             assert.match(li.closest('.extra-courses').textContent, /catalog doesn.t list them/);
           }
         });
@@ -132,7 +134,7 @@ describe('app fidelity to the official catalog', () => {
   it('the sample transcript exercises the labeled extras', () => {
     const root = render(CATALOGS.find(c => c._meta.catoid === '25'), SAMPLE_TRANSCRIPT);
     const kinds = new Set(Array.from(root.querySelectorAll('.extra-course')).map(li => li.dataset.provenance));
-    assert.deepEqual([...kinds].sort(), ['assumed', 'other-catalog']);
+    assert.deepEqual([...kinds].sort(), ['assumed', 'other-catalog', 'workday']);
     assert.ok(root.querySelector('.course.is-excluded'), 'excluded transfer shown');
     assert.match(root.querySelector('.callout-warn').textContent, /CORE 100 is transfer credit/);
   });

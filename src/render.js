@@ -36,7 +36,7 @@ function attachPlanToggle(li, courseCode, isPlanned, onTogglePlanned) {
   li.appendChild(btn);
 }
 
-export function render({ results, kuSummary, transcript, plannedCourses, kuWarnings = [] }, options = {}) {
+export function render({ results, kuSummary, transcript, plannedCourses, warnings = [] }, options = {}) {
   const onTogglePlanned = options.onTogglePlanned;
   clearRenderedState();
 
@@ -277,13 +277,13 @@ export function render({ results, kuSummary, transcript, plannedCourses, kuWarni
   firstCore.parentElement.insertBefore(panel, firstCore);
   firstCore.parentElement.insertBefore(disclaimer, firstCore);
 
-  if (kuWarnings.length > 0) {
+  if (warnings.length > 0) {
     const warning = document.createElement('div');
     warning.className = 'ca-ku-warning';
     const intro = document.createElement('strong');
-    intro.textContent = '\u26A0\uFE0F Some K&U credit couldn\u2019t be matched to a K&U category, so your K&U totals above may be too low:';
+    intro.textContent = '\u26A0\uFE0F Some credit Workday counts toward the core isn\u2019t counted the same way here, so your results above may understate your progress:';
     const list = document.createElement('ul');
-    for (const w of kuWarnings) {
+    for (const w of warnings) {
       const li = document.createElement('li');
       li.textContent = w.code + (w.title ? ' \u2014 ' + w.title : '') + ' (' + w.hours + 'h): ' + w.reason + '.';
       list.appendChild(li);
@@ -422,6 +422,15 @@ export function render({ results, kuSummary, transcript, plannedCourses, kuWarni
       block.querySelector('p')?.after(note);
     }
 
+    const workdayCourses = r.courseAnnotations.filter(c => c.isFromWorkday);
+    if (workdayCourses.length > 0) {
+      const note = document.createElement('span');
+      note.className = 'ca-hours-note';
+      note.textContent = '✓ Also counted (Workday Academic Progress lists it here, though the catalog doesn’t): '
+        + workdayCourses.map(c => c.code + (c.title ? ' — ' + c.title : '')).join(', ');
+      block.querySelector('p')?.after(note);
+    }
+
     const assumedCourses = r.courseAnnotations.filter(c => c.isAssumed);
     if (assumedCourses.length > 0) {
       const note = document.createElement('span');
@@ -491,7 +500,8 @@ export function render({ results, kuSummary, transcript, plannedCourses, kuWarni
         courseToCategories[c.code].push(r.name + (c.isAssumed ? ' (assumed)' : ''));
       }
     }
-    const warnedCodes = new Set(kuWarnings.map(w => w.code));
+    const warnedCodes = new Map();
+    for (const w of warnings) warnedCodes.set(w.code, [...(warnedCodes.get(w.code) || []), w.requirement]);
 
     const section = document.createElement('div');
     section.className = 'ca-transcript-section';
@@ -501,7 +511,8 @@ export function render({ results, kuSummary, transcript, plannedCourses, kuWarni
       const catsCell = (cats.length > 0
         ? `<span class="ca-transcript-cats">${cats.join(', ')}</span>`
         : `<span class="ca-transcript-none">not in core lists</span>`)
-        + (warnedCodes.has(c.code) ? ' <span style="color:#7c2d12">\u26A0\uFE0F K&amp;U category unknown</span>' : '');
+        + (warnedCodes.has(c.code) ? ' <span style="color:#7c2d12">\u26A0\uFE0F Workday counts it toward '
+          + warnedCodes.get(c.code).join(', ').replace(/&/g, '&amp;') + '; not matched here</span>' : '');
       const statusLabel = c.status === 'in-progress' ? ' <span style="color:' + COLORS.inProgress + '">⏳</span>'
         : c.status === 'transfer' ? ' <span style="color:' + COLORS.transfer + '">↗</span>' : '';
       rows += `<tr><td><strong>${c.code}</strong>${statusLabel}</td><td>${c.title}</td><td>${c.grade || '—'}</td><td>${c.hours}h</td><td>${catsCell}</td></tr>`;

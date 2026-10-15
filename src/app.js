@@ -109,7 +109,7 @@ function analyzeInput(catalog) {
       const n = courses.filter(c => c.code).length;
       setStatus(`Read ${n} course${n === 1 ? '' : 's'} from ${SOURCE_LABELS[format]}`
         + (state.file ? ` (${state.file.name}).` : '.')
-        + (analysis.kuWarnings.length ? ` ${analysis.kuWarnings.length} need checking (see below).` : ''), 'ok');
+        + (analysis.warnings.length ? ` ${analysis.warnings.length} need checking (see below).` : ''), 'ok');
     }
   } else {
     setStatus('', null);

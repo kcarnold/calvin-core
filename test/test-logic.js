@@ -9,7 +9,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scenario, loadCategories, makeCourse, makeExemption, assertStatus, assertKU, getResult } from './helpers.js';
-import { analyze } from '../src/core.js';
+import { analyze, isTransferExcluded, workdayRequirementCategory } from '../src/core.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 
 // ---- Pick-one requirements ----
@@ -431,7 +431,7 @@ describe('placeholder core credit ("SUBJ CORE")', () => {
     const ann = r.courseAnnotations.find(c => c.code === 'HIST CORE');
     assert.equal(ann.isAssumed, true);
     assert.equal(ann.element, null);
-    assert.equal(analysis.kuWarnings.length, 0);
+    assert.equal(analysis.warnings.length, 0);
   });
 
   it('assumed History hours share the History discipline cap', () => {
@@ -449,12 +449,12 @@ describe('placeholder core credit ("SUBJ CORE")', () => {
   it('ambiguous subject (HNRS) is not guessed; warns instead', () => {
     const analysis = analyze(loadCategories(), [placeholder('HNRS', 4)], withUnion);
     assertKU(analysis, { total: 0 });
-    assert.deepEqual(analysis.kuWarnings.map(w => w.code), ['HNRS CORE']);
+    assert.deepEqual(analysis.warnings.map(w => w.code), ['HNRS CORE']);
   });
 
   it('unknown subject warns', () => {
     const analysis = analyze(loadCategories(), [placeholder('ZZZ', 3)], withUnion);
-    assert.deepEqual(analysis.kuWarnings.map(w => w.code), ['ZZZ CORE']);
+    assert.deepEqual(analysis.warnings.map(w => w.code), ['ZZZ CORE']);
   });
 
   it("the reported student's K&U rows all land somewhere", () => {
@@ -469,7 +469,7 @@ describe('placeholder core credit ("SUBJ CORE")', () => {
       makeCourse('GERM 201', 1.5, { status: 'transfer' }),
     ];
     const analysis = analyze(loadCategories(), transcript, withUnion);
-    assert.equal(analysis.kuWarnings.length, 0);
+    assert.equal(analysis.warnings.length, 0);
     assertStatus(analysis, 'Humanities', { hours: 3 });
     assertStatus(analysis, 'Arts, Oral Rhetoric, Visual Rhetoric', { hours: 6 });
     assertStatus(analysis, 'World Languages II', { hours: 1.5 });
@@ -484,17 +484,71 @@ describe('K&U claims we cannot match', () => {
   it('warns when Workday lists a course under K&U that no K&U category has', () => {
     const transcript = [{ ...makeCourse('ENGR 101', 4), requirements: [KU_REQ] }];
     const analysis = analyze(loadCategories(), transcript, { extraCourses: KNOWN_COURSE_CATEGORIES });
-    assert.deepEqual(analysis.kuWarnings.map(w => w.code), ['ENGR 101']);
+    assert.deepEqual(analysis.warnings.map(w => w.code), ['ENGR 101']);
   });
 
   it('no warning when the K&U course matches', () => {
     const transcript = [{ ...makeCourse('HIST 152', 4), requirements: [KU_REQ] }];
-    assert.equal(analyze(loadCategories(), transcript).kuWarnings.length, 0);
+    assert.equal(analyze(loadCategories(), transcript).warnings.length, 0);
   });
 
   it('no warning for non-K&U courses outside K&U lists', () => {
     const transcript = [{ ...makeCourse('ENGR 101', 4), requirements: ['ENGR 101'] }];
-    assert.equal(analyze(loadCategories(), transcript).kuWarnings.length, 0);
+    assert.equal(analyze(loadCategories(), transcript).warnings.length, 0);
+  });
+});
+
+describe('Courses Workday lists under a requirement the catalog does not', () => {
+  const GRC = 'Global Regions and Cultures (Tag)';
+  // Reported: a summer ENGR 202 section Workday counts as Global Regions and Cultures.
+  const engr202 = { ...makeCourse('ENGR 202', 4), title: 'Statics and Dynamics', requirements: ['Global Regions and Cultures Core'] };
+
+  for (const catoid of ['24', '25']) {
+    it(`a pick-one requirement counts it, labeled as from Workday (${catoid})`, () => {
+      const analysis = analyze(loadCategories(catoid), [engr202], { extraCourses: KNOWN_COURSE_CATEGORIES });
+      assertStatus(analysis, GRC, { status: 'complete' });
+      const ann = getResult(analysis, GRC).courseAnnotations.find(a => a.code === 'ENGR 202');
+      assert.equal(ann.isFromWorkday, true);
+      assert.equal(ann.element, null);
+      assert.deepEqual(analysis.warnings, []);
+    });
+  }
+
+  it('without a Workday listing it does not count', () => {
+    const analysis = analyze(loadCategories('24'), [makeCourse('ENGR 202', 4)]);
+    assertStatus(analysis, GRC, { status: 'incomplete' });
+  });
+
+  it('does not complete a requirement with alternatives (ENGL 100 alone), but does warn on unlisted courses', () => {
+    const FW = 'Competencies & Skills: Foundational Writing Core';
+    const listed = analyze(loadCategories(), [{ ...makeCourse('ENGL 100', 3), requirements: [FW] }]);
+    assertStatus(listed, 'Foundational Writing', { status: 'incomplete' });
+    assert.deepEqual(listed.warnings, []);
+    const unlisted = analyze(loadCategories(), [{ ...makeCourse('ENGL 199', 3), requirements: [FW] }]);
+    assertStatus(unlisted, 'Foundational Writing', { status: 'incomplete' });
+    assert.deepEqual(unlisted.warnings.map(w => [w.code, w.requirement]), [['ENGL 199', 'Foundational Writing']]);
+  });
+
+  it('a requirement not on this catalog page is ignored', () => {
+    const transcript = [{ ...makeCourse('ENGR 202', 4), requirements: ['Rhetoric in Disciplines'] }];
+    const analysis = analyze(loadCategories('24'), transcript);
+    assert.deepEqual(analysis.warnings, []);
+  });
+
+  it('transfer credit a requirement refuses is flagged as excluded, not as unmatched', () => {
+    const cats = loadCategories();
+    const cat = cats.find(c => c.name && c.courses?.length && isTransferExcluded(c));
+    const code = cat.courses[0].code;
+    const transcript = [{ ...makeCourse(code, 3, { status: 'transfer' }), requirements: [cat.name] }];
+    assert.deepEqual(analyze(cats, transcript).warnings, []);
+  });
+
+  it('maps the Workday core requirement names', () => {
+    assert.equal(workdayRequirementCategory('Global Regions and Cultures Core'), GRC);
+    assert.equal(workdayRequirementCategory('Foundations of Christianity I Core'), 'Foundations of Christianity I');
+    assert.equal(workdayRequirementCategory('Foundations of Christianity II Core'), 'Foundations of Christianity II');
+    assert.equal(workdayRequirementCategory('Health & Movement - Fitness & Wellness Core'), 'Health and Movement (Personal Fitness)');
+    assert.equal(workdayRequirementCategory('CS 212 (minimum grade C-)'), null);
   });
 });
 
