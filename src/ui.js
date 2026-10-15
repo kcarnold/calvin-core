@@ -1,7 +1,13 @@
 import { parseTranscript, parseProgress, detectInputFormat, parseCoreProgram, analyze } from './core.js';
 import { clearRenderedState, render } from './render.js';
+import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
 
-const TARGET_PAGE = { pathname: '/content.php', catoid: '24', navoid: '780' };
+// Core Program pages, newest first. Requirements are read from whichever page
+// is open, so a student should use the catalog for their entry year.
+const CATALOG_PAGES = [
+  { catoid: '25', navoid: '803', label: '2026–27' },
+  { catoid: '24', navoid: '780', label: '2025–26' },
+];
 const UI_IDS = {
   panel: 'ca-launcher-panel',
   details: 'ca-launcher-details',
@@ -115,11 +121,23 @@ function setStatus(message, kind) {
   if (kind === 'error') status.classList.add('ca-status-error');
 }
 
-function isSupportedCatalogPage() {
+function catalogPageUrl(page) {
+  return `/content.php?catoid=${page.catoid}&navoid=${page.navoid}`;
+}
+
+function currentCatalogPage() {
   const url = new URL(window.location.href);
-  return url.pathname === TARGET_PAGE.pathname
-    && url.searchParams.get('catoid') === TARGET_PAGE.catoid
-    && url.searchParams.get('navoid') === TARGET_PAGE.navoid;
+  if (url.pathname !== '/content.php') return null;
+  return CATALOG_PAGES.find(page => url.searchParams.get('catoid') === page.catoid
+    && url.searchParams.get('navoid') === page.navoid) || null;
+}
+
+function catalogNoteHtml(current) {
+  const others = CATALOG_PAGES.filter(page => page !== current)
+    .map(page => `<a href="${catalogPageUrl(page)}">${page.label}</a>`);
+  return `Checking against the <strong>${current.label}</strong> core requirements. `
+    + `Use the catalog for the year you entered Calvin`
+    + (others.length > 0 ? ` (switch to ${others.join(', ')})` : '') + '.';
 }
 
 function runAnnotation(text) {
@@ -146,7 +164,9 @@ function runAnnotation(text) {
   }
 
   const categories = parseCoreProgram();
-  const analysis = analyze(categories, courses, { plannedCourses: Array.from(plannedCourses), overrides });
+  const analysis = analyze(categories, courses, {
+    plannedCourses: Array.from(plannedCourses), overrides, extraCourses: KNOWN_COURSE_CATEGORIES,
+  });
   const appliedPlanned = new Set(analysis.plannedCourses || []);
   plannedCourses.clear();
   for (const code of appliedPlanned) plannedCourses.add(code);
@@ -172,7 +192,7 @@ function runAnnotation(text) {
   if (plannedCourses.size > 0) console.log('[Core Annotator] Planned:', Array.from(plannedCourses));
 }
 
-function mountLauncher() {
+function mountLauncher(catalogPage) {
   if (document.getElementById(UI_IDS.panel)) return;
   const firstCore = document.querySelector('div.acalog-core');
   if (!firstCore || !firstCore.parentElement) return;
@@ -184,6 +204,7 @@ function mountLauncher() {
   panel.innerHTML = `
     <details id="${UI_IDS.details}">
       <summary>Calvin Core Annotator</summary>
+      <p>${catalogNoteHtml(catalogPage)}</p>
       <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here. Pasting shows opportunities immediately.</p>
       <textarea id="${UI_IDS.textarea}" spellcheck="false" placeholder="Paste Workday Academic History or Academic Progress here"></textarea>
       <div class="ca-launcher-actions">
@@ -226,10 +247,11 @@ function mountLauncher() {
 
 export function main() {
   console.log("v0.0.3");
-  if (!isSupportedCatalogPage()) return;
+  const catalogPage = currentCatalogPage();
+  if (!catalogPage) return;
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountLauncher, { once: true });
+    document.addEventListener('DOMContentLoaded', () => mountLauncher(catalogPage), { once: true });
     return;
   }
-  mountLauncher();
+  mountLauncher(catalogPage);
 }

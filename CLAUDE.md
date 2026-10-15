@@ -1,11 +1,20 @@
 # Calvin Core Annotator
 
-Browser extension / bookmarklet that annotates https://catalog.calvin.edu/content.php?catoid=24&navoid=780 with a student's transcript data to show core program fulfillment status.
+Browser extension / bookmarklet that annotates the Core Program page of the Calvin catalog with a student's transcript data to show core program fulfillment status.
+
+Supported pages (listed in `CATALOG_PAGES` in `src/ui.js`; requirement *structure* is parsed from whichever page is open, so students use the catalog for their entry year):
+- `catoid=25&navoid=803` — 2026–27. Adds the "Rhetoric in Disciplines" pick-one requirement.
+- `catoid=24&navoid=780` — 2025–26.
+
+**Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `ui.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to categories on the open page. Taken courses matched only via the union get `isFromOtherCatalog` annotations with no `element`; render lists them in a note on the block. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
+
+catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an empty 202. Save page HTML from a real browser.
 
 ## Project Structure
 
 - `src/core.js` — Pure logic: `parseTranscript`, `parseProgress`, `parseCoreProgram(root)`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
 - `src/render.js` — DOM rendering: injects styles, badges, TOC, annotations. Browser-only.
+- `src/catalog-courses.js` — Generated: `KNOWN_COURSE_CATEGORIES`, union of course lists across `catalog-categories-*.json`. Don't edit by hand.
 - `src/ui.js` — Launcher panel, paste handler, `main()` entry. Browser-only.
 - `src/main.js` — Entry point (imports ui.js, calls `main()`).
 - `build.js` — esbuild: bundles to `dist/extension.js` (IIFE) and `dist/bookmarklet.js` (IIFE, minified).
@@ -14,8 +23,8 @@ Browser extension / bookmarklet that annotates https://catalog.calvin.edu/conten
 - `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
 - `test/test-opportunities.js` — Opportunity verification: proves "satisfied" status = real actionable opportunity.
 - `test/run-test.js` — Integration test harness: full pipeline with real transcripts + catalog HTML.
-- `test/generate-catalog-json.js` — One-shot script: parses catalog.html → catalog-categories.json (strips DOM fields).
-- `test/fixtures/` — Gitignored (student data). Exception: `catalog-categories.json` (public catalog data, committed).
+- `test/generate-catalog-json.js` — One-shot script: `node test/generate-catalog-json.js <catoid>`: parses catalog-<catoid>.html → catalog-categories-<catoid>.json (strips DOM fields), then regenerates `src/catalog-courses.js` from all catalog JSONs. `loadCategories(catoid)` in helpers defaults to the newest catalog.
+- `test/fixtures/` — Gitignored (student data). Exceptions: `catalog-categories-*.json` and `catalog-*.html` (public catalog data, committed). Integration snapshots use `catalog-24.html`.
 - `script.js` — Legacy monolith (kept for reference).
 
 ## Build & Test
@@ -26,7 +35,7 @@ npm run build          # → dist/extension.js + dist/bookmarklet.js
 npm test               # unit tests (node:test) + integration tests
 npm run test:unit      # 128 tests: parsing, logic, opportunity verification
 npm run test:integration  # legacy harness with real transcript snapshots
-npm run generate-catalog  # re-generate catalog-categories.json from catalog.html
+npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from catalog-25.html
 ```
 
 ### Test layers
@@ -46,7 +55,7 @@ npm run generate-catalog  # re-generate catalog-categories.json from catalog.htm
 
 - Students copy-paste from Workday's "Student Academic History" page. Entries are tab-delimited, separated by "Opens in new window" strings.
 - Fields per entry: course name, grade, grade points (decimal), hours (integer), earned grade points (decimal). The grade regex must allow 1-2 uppercase letters (e.g., "A-", "B+", "CR").
-- Lab courses (code ending in `L`, e.g., `CS 106L`) must have their hours merged into the parent lecture course. Labs don't appear in the catalog's core lists.
+- Lab courses (code ending in `L`, e.g., `CS 106L`) must have their hours merged into the parent lecture course. Labs rarely appear in core lists; when one does (ENGR 303L in the 2025–26 Environmental Sustainability tag), the merged parent's `labCodes` keep it matchable without double-counting hours.
 
 ## Requirement Rules
 
@@ -86,4 +95,5 @@ npm run generate-catalog  # re-generate catalog-categories.json from catalog.htm
 
 - Credit hours for **untaken** courses (would require AJAX calls to `preview_course.php` — see `onclick` attrs on course links for `coid` param). Currently only transcript hours are used.
 - Foundational Writing has a two-course sequence option (ENGL 100 + 102) that isn't specially handled.
+- Some requirements say "must be completed at Calvin" or "Transfer credit not accepted" (Community and Commitments, Rhetoric in Disciplines, CCEQ), but `transfer` courses still satisfy them.
 - No persistence — transcript must be re-pasted each time.

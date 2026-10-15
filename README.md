@@ -4,7 +4,10 @@ Browser extension that annotates Calvin's core curriculum page with a student's 
 
 It runs on:
 
-- https://catalog.calvin.edu/content.php?catoid=24&navoid=780
+- https://catalog.calvin.edu/content.php?catoid=25&navoid=803 (2026–27 catalog)
+- https://catalog.calvin.edu/content.php?catoid=24&navoid=780 (2025–26 catalog)
+
+Requirements are read from whichever page is open, so students should use the catalog for the year they entered Calvin. The 2026–27 catalog adds the Rhetoric in Disciplines requirement.
 
 When the page loads, the extension adds a collapsed Calvin Core Annotator panel above the catalog content. Students can:
 
@@ -103,7 +106,7 @@ src/
 docs/           ← GitHub Pages install page + hosted bookmarklet bundle
 test/
   run-test.js   ← Node.js test harness (jsdom)
-  fixtures/     ← catalog.html (auto-fetched), transcript-*.txt, *.expected.json
+  fixtures/     ← catalog-<catoid>.html (saved from a browser), transcript-*.txt, *.expected.json
 build.js        ← esbuild config → dist/extension.js + dist/bookmarklet.js
 manifest.json   ← WebExtension manifest (Chrome, Edge, Firefox)
 script.js       ← legacy monolith (kept for reference, not used by build)

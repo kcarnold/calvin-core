@@ -391,6 +391,15 @@ export function render({ results, kuSummary, transcript, plannedCourses }, optio
       block.querySelector('p')?.after(note);
     }
 
+    const otherCatalogCourses = r.courseAnnotations.filter(c => c.isFromOtherCatalog);
+    if (otherCatalogCourses.length > 0) {
+      const note = document.createElement('span');
+      note.className = 'ca-hours-note';
+      note.textContent = '\u2713 Also counted (listed here in another catalog year): '
+        + otherCatalogCourses.map(c => c.code + ' (' + c.hours + 'h)').join(', ');
+      block.querySelector('p')?.after(note);
+    }
+
     if (r.status === 'complete' && r.type !== 'tag') block.classList.add('ca-category-complete');
 
     for (const c of r.courseAnnotations) {

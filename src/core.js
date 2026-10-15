@@ -232,17 +232,24 @@ function mergeLabHoursForAnalysis(transcript) {
     }
     const labMatch = c.code.match(/^([A-Z]{2,5}\s+\d{3})L$/);
     if (labMatch) labs.push({ parentCode: labMatch[1], ...c });
-    else if (!byCode.has(c.code)) byCode.set(c.code, { ...c });
+    else if (!byCode.has(c.code)) byCode.set(c.code, { ...c, labCodes: [] });
   }
 
   for (const lab of labs) {
-    if (byCode.has(lab.parentCode)) byCode.get(lab.parentCode).hours += lab.hours;
-    else if (!byCode.has(lab.code)) byCode.set(lab.code, { ...lab });
+    if (byCode.has(lab.parentCode)) {
+      const parent = byCode.get(lab.parentCode);
+      parent.hours += lab.hours;
+      parent.labCodes.push(lab.code);
+    } else if (!byCode.has(lab.code)) byCode.set(lab.code, { ...lab, labCodes: [] });
   }
 
   return [...Array.from(byCode.values()), ...nonCourseEntries];
 }
 
+// options.extraCourses: { [category name]: { [course code]: sub-discipline or null } }
+// Additional course→requirement mappings (e.g. KNOWN_COURSE_CATEGORIES, the union
+// of all known catalogs). Additive only: a taken course listed here counts toward
+// the named requirement even if the page's own list omits it.
 export function analyze(cats, transcript, options = {}) {
   const mergedTranscript = mergeLabHoursForAnalysis(transcript);
   const completedOrTransfer = mergedTranscript.filter(c => c.status !== 'in-progress' && c.status !== 'exemption');
@@ -256,6 +263,16 @@ export function analyze(cats, transcript, options = {}) {
   const allActiveSet = new Set([...takenSet, ...inProgressSet]);
   const takenMap = {};
   for (const c of mergedTranscript) { if (c.code) takenMap[c.code] = c; }
+  // A merged lab still satisfies requirements that list the lab code itself
+  // (e.g. ENGR 303L in the 2025-26 Environmental Sustainability tag).
+  for (const c of mergedTranscript) {
+    for (const lab of c.labCodes || []) {
+      takenMap[lab] = c;
+      (inProgressSet.has(c.code) ? inProgressSet : takenSet).add(lab);
+      allActiveSet.add(lab);
+    }
+  }
+  const extraCourses = options.extraCourses || {};
   const plannedSet = new Set(
     (options.plannedCourses || [])
       .map(code => normalizeCourseCode(code))
@@ -265,6 +282,14 @@ export function analyze(cats, transcript, options = {}) {
   for (const cat of cats) {
     if (!cat.courses || !cat.name) continue;
     for (const c of cat.courses) { if (!c2c[c.code]) c2c[c.code] = []; c2c[c.code].push(cat.name); }
+  }
+  const pageCatNames = new Set(cats.map(c => c.name).filter(Boolean));
+  for (const [name, codes] of Object.entries(extraCourses)) {
+    if (!pageCatNames.has(name)) continue;
+    for (const code of Object.keys(codes)) {
+      if (!c2c[code]) c2c[code] = [];
+      if (!c2c[code].includes(name)) c2c[code].push(name);
+    }
   }
   const kuH = {}; let kuTotal = 0, kuCount = 0;
   const results = [];
@@ -293,12 +318,20 @@ export function analyze(cats, transcript, options = {}) {
         takenCount: 0, inProgressCount: 0, plannedCount: 0, courseAnnotations, isExempt: true });
       continue;
     }
-    const takenHere = cat.courses.filter(c => allActiveSet.has(c.code));
-    const inProgressHere = cat.courses.filter(c => inProgressSet.has(c.code));
+    // Taken courses this page doesn't list here but another known catalog does.
+    // They have no element on the page; render lists them in a note.
+    const pageCodes = new Set(cat.courses.map(c => c.code));
+    const extraHere = Object.entries(extraCourses[cat.name] || {})
+      .filter(([code]) => !pageCodes.has(code) && allActiveSet.has(code))
+      .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isFromOtherCatalog: true }));
+    const takenHere = [...cat.courses, ...extraHere].filter(c => allActiveSet.has(c.code));
     let hrsRaw = 0; const hByD = {};
+    const counted = new Set();  // a lecture and its merged lab share one transcript entry
     for (const c of takenHere) {
-      const tc = takenMap[c.code]; const h = tc ? tc.hours : 0;
-      hrsRaw += h; const d = c.subDiscipline || 'General'; hByD[d] = (hByD[d] || 0) + h;
+      const tc = takenMap[c.code];
+      if (!tc || counted.has(tc)) continue;
+      counted.add(tc);
+      hrsRaw += tc.hours; const d = c.subDiscipline || 'General'; hByD[d] = (hByD[d] || 0) + tc.hours;
     }
     const hrsEffective = (cat.maxHours !== null) ? Math.min(hrsRaw, cat.maxHours) : hrsRaw;
     const maxedD = new Set();
@@ -329,7 +362,7 @@ export function analyze(cats, transcript, options = {}) {
         subDisciplines[dName] = { hoursEarned: earned, cap: cat.maxPerDiscipline, isMaxed, untakenCount };
       }
     }
-    const courseAnnotations = cat.courses.map(c => {
+    const courseAnnotations = [...cat.courses, ...extraHere].map(c => {
       const isTaken = takenSet.has(c.code);
       const isInProgress = inProgressSet.has(c.code);
       const isActive = isTaken || isInProgress;

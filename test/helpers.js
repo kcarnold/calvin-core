@@ -19,18 +19,17 @@ import assert from 'node:assert/strict';
 import { analyze } from '../src/core.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const CATALOG_JSON = join(__dirname, 'fixtures', 'catalog-categories.json');
+// ---- Catalog loader (cached per catoid) ----
 
-// ---- Catalog loader (cached) ----
+const _cached = new Map();
 
-let _cached = null;
-
-export function loadCategories() {
-  if (!_cached) {
-    const data = JSON.parse(readFileSync(CATALOG_JSON, 'utf-8'));
-    _cached = data.categories;
+/** catoid '25' = 2026-27 catalog (default), '24' = 2025-26. */
+export function loadCategories(catoid = '25') {
+  if (!_cached.has(catoid)) {
+    const path = join(__dirname, 'fixtures', `catalog-categories-${catoid}.json`);
+    _cached.set(catoid, JSON.parse(readFileSync(path, 'utf-8')).categories);
   }
-  return _cached;
+  return _cached.get(catoid);
 }
 
 // ---- Course lookup ----
@@ -151,9 +150,9 @@ export function assertKU(analysis, expected) {
 // ---- Fluent scenario builder ----
 
 class Scenario {
-  constructor(name) {
+  constructor(name, { catoid } = {}) {
     this.name = name;
-    this._categories = loadCategories();
+    this._categories = loadCategories(catoid);
     this._steps = [];        // array of { type, ... }
     this._transcript = [];   // accumulates transcript entries
   }
@@ -269,10 +268,11 @@ class Scenario {
 /**
  * Create a new test scenario.
  * @param {string} name - Human-readable scenario description
+ * @param {{catoid?: string}} [opts] - catalog to analyze against (default: latest)
  * @returns {Scenario}
  */
-export function scenario(name) {
-  return new Scenario(name);
+export function scenario(name, opts) {
+  return new Scenario(name, opts);
 }
 
 // ---- Generic opportunity verifier ----

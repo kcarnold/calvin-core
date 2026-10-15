@@ -2,4 +2,3 @@
 node_modules/
 dist/
 /test/fixtures/transcript-private*
-/test/fixtures/catalog.html

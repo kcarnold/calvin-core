@@ -12,31 +12,28 @@
  *
  *   node test/run-test.js test/fixtures/transcript-alice.txt > test/fixtures/transcript-alice.expected.json
  *
- * The catalog HTML is fetched once from the live site and cached at
- * test/fixtures/catalog.html.  Pass --refresh-catalog to re-fetch.
+ * Snapshots were taken against the 2025-26 catalog, saved at
+ * test/fixtures/catalog-24.html.  catalog.calvin.edu sits behind a bot
+ * challenge, so the HTML must be saved from a browser (not fetched here).
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { parseTranscript, parseProgress, detectInputFormat, parseCoreProgram, analyze, KU_NAMES } from '../src/core.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const FIXTURES = join(__dirname, 'fixtures');
-const CATALOG_PATH = join(FIXTURES, 'catalog.html');
+const CATALOG_PATH = join(FIXTURES, 'catalog-24.html');
 const CATALOG_URL = 'https://catalog.calvin.edu/content.php?catoid=24&navoid=780';
 
 // ---- Catalog HTML ----
 
-async function ensureCatalog(refresh) {
-  if (!refresh && existsSync(CATALOG_PATH)) return;
-  console.error(`Fetching catalog from ${CATALOG_URL} ...`);
-  const res = await fetch(CATALOG_URL);
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching catalog`);
-  const html = await res.text();
-  writeFileSync(CATALOG_PATH, html, 'utf-8');
-  console.error(`Saved ${CATALOG_PATH} (${(html.length / 1024).toFixed(0)} KB)`);
+function ensureCatalog() {
+  if (existsSync(CATALOG_PATH)) return;
+  throw new Error(`Missing ${CATALOG_PATH}. Open ${CATALOG_URL} in a browser and save the page HTML there.`);
 }
 
 function loadCatalogDOM() {
@@ -103,10 +100,9 @@ function diffSummaries(expected, actual) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const refresh = args.includes('--refresh-catalog');
   const files = args.filter(a => !a.startsWith('--'));
 
-  await ensureCatalog(refresh);
+  ensureCatalog();
   const doc = loadCatalogDOM();
   const categories = parseCoreProgram(doc);
 
@@ -139,7 +135,7 @@ async function main() {
     const name = basename(file, '.txt');
     const text = readFileSync(file, 'utf-8');
     const transcript = parseTranscript(text);
-    const analysis = analyze(categories, transcript);
+    const analysis = analyze(categories, transcript, { extraCourses: KNOWN_COURSE_CATEGORIES });
     const actual = summarize(analysis);
 
     const expectedPath = file.replace(/\.txt$/, '.expected.json');
@@ -230,7 +226,7 @@ async function main() {
     }
 
     // Test 4: Feed into analyze() and check exemption handling
-    const analysis = analyze(categories, courses);
+    const analysis = analyze(categories, courses, { extraCourses: KNOWN_COURSE_CATEGORIES });
     const wl1 = analysis.results.find(r => r.name === 'World Languages I');
     if (wl1) {
       if (wl1.status === 'complete' && wl1.isExempt) {

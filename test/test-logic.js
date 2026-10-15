@@ -1,7 +1,7 @@
 /**
  * Business logic tests — analyze() with real catalog categories.
  *
- * These tests use pre-parsed catalog data (catalog-categories.json) and
+ * These tests use pre-parsed catalog data (catalog-categories-<catoid>.json) and
  * the fluent scenario API to verify requirement status progression.
  * Designed to be walkable with the registrar.
  */
@@ -10,6 +10,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scenario, loadCategories, makeCourse, makeExemption, assertStatus, assertKU, getResult } from './helpers.js';
 import { analyze } from '../src/core.js';
+import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 
 // ---- Pick-one requirements ----
 
@@ -270,5 +271,99 @@ describe('discipline cap edge cases', () => {
       .add('PSYC 151', 4)
       .expect('Social and Behavioral Sciences', { status: 'complete', hours: 8, effective: 6 })
       .run(t);
+  });
+});
+
+// ---- Catalog-year differences ----
+
+describe('catalog-year differences', () => {
+  it('2026-27 catalog (catoid 25) adds Rhetoric in Disciplines', async (t) => {
+    await scenario('Rhetoric in Disciplines, new catalog')
+      .taken('HIST 152', 4)
+      .expect('Rhetoric in Disciplines', { status: 'incomplete' })
+      .add('COMM 200', 3)
+      .expect('Rhetoric in Disciplines', { status: 'complete', takenCount: 1 })
+      .run(t);
+  });
+
+  it('2025-26 catalog (catoid 24) has no Rhetoric in Disciplines requirement', () => {
+    const analysis = analyze(loadCategories('24'), [makeCourse('COMM 200', 3)]);
+    assert.equal(analysis.results.some(r => r.name === 'Rhetoric in Disciplines'), false);
+  });
+
+  it('K&U rules are unchanged between catalogs', () => {
+    const pick = cats => cats
+      .filter(c => c.reqType === 'hour-range')
+      .map(({ name, minHours, maxHours, maxPerDiscipline }) => ({ name, minHours, maxHours, maxPerDiscipline }));
+    assert.deepEqual(pick(loadCategories('25')), pick(loadCategories('24')));
+  });
+});
+
+// ---- Union of known catalogs ----
+// Courses get renumbered between catalogs (ENST 210 → GEO 210, MATH 171 → MATH 161).
+// A course listed for a requirement in ANY known catalog counts toward it.
+
+describe('union of known catalogs (extraCourses)', () => {
+  const withUnion = { extraCourses: KNOWN_COURSE_CATEGORIES };
+  const ES = 'Environmental Sustainability (Tag)';
+
+  it('new course number counts on the old catalog page', () => {
+    const cats = loadCategories('24');
+    const transcript = [makeCourse('GEO 210', 4)];
+    assert.equal(getResult(analyze(cats, transcript), ES).status, 'incomplete');
+
+    const r = getResult(analyze(cats, transcript, withUnion), ES);
+    assert.equal(r.status, 'complete');
+    const ann = r.courseAnnotations.find(c => c.code === 'GEO 210');
+    assert.equal(ann.isFromOtherCatalog, true);
+    assert.equal(ann.element, null);
+    assert.equal(ann.hours, 4);
+  });
+
+  it('old course number counts on the new catalog page, with hours', () => {
+    const analysis = analyze(loadCategories('25'), [makeCourse('MATH 171', 4)], withUnion);
+    assertStatus(analysis, 'Mathematical Sciences', { status: 'complete', hours: 4 });
+    assertKU(analysis, { total: 4 });
+  });
+
+  it('other-catalog courses keep their sub-discipline for the per-discipline cap', () => {
+    // ENGL 361 is Creative Writing in 2026-27, not listed in 2025-26 Arts.
+    const analysis = analyze(loadCategories('24'), [makeCourse('ENGL 361', 4)], withUnion);
+    const r = getResult(analysis, 'Arts, Oral Rhetoric, Visual Rhetoric');
+    assert.equal(r.hoursEarned, 4);
+    assert.deepEqual(r.hoursByDiscipline, { 'Creative Writing': 4 });
+  });
+
+  it('does not add requirements the open catalog lacks', () => {
+    const analysis = analyze(loadCategories('24'), [makeCourse('COMM 200', 3)], withUnion);
+    assert.equal(analysis.results.some(r => r.name === 'Rhetoric in Disciplines'), false);
+    const comm = analysis.results.flatMap(r => r.courseAnnotations || []).filter(c => c.code === 'COMM 200');
+    for (const c of comm) assert.equal(c.otherCategories.includes('Rhetoric in Disciplines'), false);
+  });
+
+  it('"Also:" cross-references only point at categories on the open page', () => {
+    const cats = loadCategories('25');
+    const analysis = analyze(cats, [], withUnion);
+    const pageCats = new Set(cats.map(c => c.name));
+    for (const r of analysis.results) {
+      for (const c of r.courseAnnotations || []) {
+        for (const other of c.otherCategories) assert.ok(pageCats.has(other), `${c.code} → ${other}`);
+      }
+    }
+  });
+});
+
+describe('lab codes listed in a requirement', () => {
+  it('ENGR 303 + ENGR 303L satisfies the 2025-26 Environmental Sustainability tag', () => {
+    const analysis = analyze(loadCategories('24'), [makeCourse('ENGR 303', 3), makeCourse('ENGR 303L', 1)]);
+    assertStatus(analysis, 'Environmental Sustainability (Tag)', { status: 'complete' });
+  });
+
+  it('in-progress lab stays in-progress', () => {
+    const analysis = analyze(loadCategories('24'), [
+      makeCourse('ENGR 303', 3, { status: 'in-progress' }), makeCourse('ENGR 303L', 1, { status: 'in-progress' }),
+    ]);
+    const r = getResult(analysis, 'Environmental Sustainability (Tag)');
+    assert.equal(r.courseAnnotations.find(c => c.code === 'ENGR 303L').isInProgress, true);
   });
 });
