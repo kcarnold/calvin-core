@@ -1,7 +1,7 @@
 # Calvin Core Annotator
 
 Shows a student's core program status from pasted Workday data. Two front ends share `src/core.js`:
-- **Core Planner** (`docs/index.html` + `src/app.js`): standalone app; bundles the saved catalog JSON. Doesn't look like the catalog, on purpose. Keeps "Workday is the official record" hedging. Must stay entirely client-side (CSP `connect-src 'none'`; the planned Workday XLSX import should read files locally).
+- **Core Planner** (`docs/index.html` + `src/app.js`): standalone app; bundles the saved catalog JSON. Doesn't look like the catalog, on purpose. Keeps "Workday is the official record" hedging. Must stay entirely client-side (CSP `connect-src 'none'`; Workday .xlsx exports are read locally).
 - **Extension / bookmarklet** (`src/ui.js`, `src/render.js`): annotates the catalog's Core Program page in place.
 
 Supported catalogs (listed in `CATALOG_PAGES` in `src/ui.js` and `CATALOGS` in `src/app.js`; students use the catalog for their entry year):
@@ -25,16 +25,18 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 
 ## Project Structure
 
-- `src/core.js` — Pure logic: `parseTranscript`, `parseProgress`, `parseCoreProgram(root)`, `INSTRUCTION_RULES`/`classifyInstructions`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
-- `src/app.js` — Standalone app entry: state, paste handling, catalog picker. Imports `catalog/*.json`.
+- `src/core.js` — Pure logic: `parseTranscript`, `parseProgress`, `parseProgressRows`, `parseCoreProgram(root)`, `INSTRUCTION_RULES`/`classifyInstructions`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
+- `src/xlsx.js` — `readXlsxRows(data, { DOMParser })`: first worksheet's cells as rows of strings (fflate unzip + DOMParser; inline and shared strings).
+- `src/app.js` — Standalone app entry: state, paste and .xlsx file handling, catalog picker. Imports `catalog/*.json`.
 - `src/app-render.js` — `renderApp(root, state)`: builds the app page from catalog JSON + optional analysis. Uses `root.ownerDocument`, so tests render it in jsdom.
 - `src/render.js` — Catalog-page rendering: injects styles, badges, TOC, annotations. Browser-only.
 - `src/catalog-courses.js` — Generated: `KNOWN_COURSE_CATEGORIES`, union of course lists across `catalog-categories-*.json`. Don't edit by hand.
-- `src/ui.js` — Launcher panel, paste handler, `main()` entry. Browser-only.
+- `src/ui.js` — Launcher panel, paste and .xlsx file handlers, `main()` entry. Browser-only.
 - `src/main.js` — Entry point (imports ui.js, calls `main()`).
 - `build.js` — esbuild: bundles `docs/app.js` (standalone app), `dist/extension.js`, `dist/bookmarklet.js`, `docs/bookmarklet.js`, `docs/overlap-view.js`.
 - `test/helpers.js` — Fluent scenario API and generic opportunity verifier for unit tests.
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
+- `test/test-xlsx.js` — `readXlsxRows` + `parseProgressRows` on `test/fixtures/academic-progress-sample.xlsx` (scrubbed via `test/scrub-progress-xlsx.py`) and generated workbooks.
 - `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
 - `test/test-opportunities.js` — Opportunity verification: proves "satisfied" status = real actionable opportunity.
 - `test/run-test.js` — Integration test harness: full pipeline with real transcripts + catalog HTML.
@@ -81,6 +83,12 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 
 - One field per line. Hours may be fractional (`1.5`, transfer credit).
 - Any line that isn't a course or field value is taken as a requirement name; each course records the Workday requirement(s) it's listed under in `requirements` (e.g. "Knowledge and Understanding - minimum 26 hours").
+- Exemptions get their target from their name ("Language Exemption") or the requirement they're listed under ("High School Exemption" under "World Languages I Core").
+
+## Academic Progress .xlsx Export
+
+- One sheet. Each program has a header row (`Requirement`, `Status`, `Remaining`, `Registrations Used`, `Academic Period`, `Hours`, `Grade`); `parseProgressRows` maps columns by header name. Every row below it is one requirement with at most one course/exemption, the requirement name repeated per course. A table ends at the first row lacking a requirement or status (e.g. "Program of Study GPA").
+- Both progress inputs become records `{ requirement, item, period, hours, grade }`, converted to courses by the shared `progressFromRecords`.
 
 ## Placeholder Credit and K&U Warnings
 
@@ -127,4 +135,4 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 - Credit hours for **untaken** courses (would require AJAX calls to `preview_course.php` — see `onclick` attrs on course links for `coid` param). Currently only transcript hours are used.
 - "One Foundations of Christianity course must be completed at Calvin" and "Test credit ... may not satisfy Engaged Citizenship" aren't checked (shown as Not checked).
 - World Languages II's "101-102 in a different language" option isn't checked (Partly checked); see issue #2.
-- No persistence — transcript must be re-pasted each time (app remembers only the catalog year, in localStorage).
+- No persistence — transcript must be re-pasted (or the export re-chosen) each time (app remembers only the catalog year, in localStorage).

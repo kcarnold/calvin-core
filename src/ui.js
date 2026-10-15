@@ -1,4 +1,5 @@
-import { parseTranscript, parseProgress, detectInputFormat, parseCoreProgram, analyze } from './core.js';
+import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, parseCoreProgram, analyze } from './core.js';
+import { readXlsxRows } from './xlsx.js';
 import { clearRenderedState, render } from './render.js';
 import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
 
@@ -12,6 +13,7 @@ const UI_IDS = {
   panel: 'ca-launcher-panel',
   details: 'ca-launcher-details',
   textarea: 'ca-transcript-input',
+  file: 'ca-export-input',
   status: 'ca-launcher-status',
   styles: 'ca-launcher-styles',
 };
@@ -98,6 +100,20 @@ function ensureLauncherStyles() {
     .ca-launcher-button-secondary:hover {
       background: #f3f7f8;
     }
+    .ca-launcher-file {
+      position: relative;
+    }
+    .ca-launcher-file input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .ca-launcher-file:focus-within {
+      outline: 2px solid #244b57;
+      outline-offset: 2px;
+    }
     #${UI_IDS.status} {
       font-size: 12px;
       color: #35515a;
@@ -148,18 +164,37 @@ function runAnnotation(text) {
   }
 
   const format = detectInputFormat(normalized);
-  let courses, overrides;
   if (format === 'progress') {
-    const result = parseProgress(normalized);
-    courses = result.courses;
-    overrides = result.overrides;
+    const { courses, overrides } = parseProgress(normalized);
+    showAnalysis({ format, courses, overrides });
   } else {
-    courses = parseTranscript(normalized);
+    showAnalysis({ format, courses: parseTranscript(normalized) });
   }
+}
 
+// Reads a Workday Academic Progress .xlsx export locally.
+async function runExport(file) {
+  setStatus(`Reading ${file.name}…`, null);
+  let input;
+  try {
+    const { courses, overrides } = parseProgressRows(readXlsxRows(await file.arrayBuffer()));
+    input = { format: 'progress-xlsx', name: file.name, courses, overrides };
+  } catch (err) {
+    clearRenderedState();
+    setStatus(`Couldn’t read ${file.name}: ${err.message}. Choose the .xlsx file Workday exports from Academic Progress.`, 'error');
+    return;
+  }
+  plannedCourses.clear();
+  showAnalysis(input);
+}
+
+function showAnalysis(input) {
+  const { format, courses, overrides } = input;
   if (courses.length === 0) {
     clearRenderedState();
-    setStatus('Could not parse any courses. Copy from Workday Academic Record (Academic History or Academic Progress) and paste the full content here.', 'error');
+    setStatus(input.name
+      ? `No courses found in ${input.name}. Choose the .xlsx file Workday exports from Academic Progress.`
+      : 'Could not parse any courses. Copy from Workday Academic Record (Academic History or Academic Progress) and paste the full content here.', 'error');
     return;
   }
 
@@ -174,7 +209,7 @@ function runAnnotation(text) {
     onTogglePlanned: (courseCode) => {
       if (plannedCourses.has(courseCode)) plannedCourses.delete(courseCode);
       else plannedCourses.add(courseCode);
-      runAnnotation(text);
+      showAnalysis(input);
     }
   });
   const inProgressCount = courses.filter(c => c.status === 'in-progress').length;
@@ -206,10 +241,13 @@ function mountLauncher(catalogPage) {
     <details id="${UI_IDS.details}">
       <summary>Calvin Core Annotator</summary>
       <p>${catalogNoteHtml(catalogPage)}</p>
-      <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here. Pasting shows opportunities immediately. (If any tables have multiple pages, make sure you set them to show all rows.)</p>
+      <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here. Pasting shows opportunities immediately. (If any tables have multiple pages, make sure you set them to show all rows.) Or export Academic Progress to Excel and choose the .xlsx file.</p>
       <textarea id="${UI_IDS.textarea}" spellcheck="false" placeholder="Paste Workday Academic History or Academic Progress here"></textarea>
       <div class="ca-launcher-actions">
         <button type="button" class="ca-launcher-button" data-action="analyze">Show core opportunities</button>
+        <label class="ca-launcher-button ca-launcher-button-secondary ca-launcher-file">Choose Workday export (.xlsx)
+          <input type="file" id="${UI_IDS.file}" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        </label>
         <button type="button" class="ca-launcher-button ca-launcher-button-secondary" data-action="reset">Reset annotations</button>
         <span id="${UI_IDS.status}">Paste your Workday Academic History or Academic Progress to see your core opportunities.</span>
       </div>
@@ -218,12 +256,22 @@ function mountLauncher(catalogPage) {
 
   const details = panel.querySelector('details');
   const textarea = panel.querySelector('textarea');
+  const fileInput = panel.querySelector('input[type=file]');
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    textarea.value = '';
+    await runExport(file);
+    fileInput.value = '';
+    details.open = false;
+  });
   panel.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
     if (button.dataset.action === 'analyze') runAnnotation(textarea.value);
     if (button.dataset.action === 'reset') {
       textarea.value = '';
+      fileInput.value = '';
       plannedCourses.clear();
       clearRenderedState();
       setStatus('Annotations cleared.', null);
