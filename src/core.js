@@ -46,50 +46,36 @@ function exemptionTarget(name, requirement) {
 }
 
 // ========== PROGRESS PARSER ==========
-// Parses copy-paste from Workday Academic Progress page.
+// Both Academic Progress inputs (pasted text, .xlsx export) become records
+//   { requirement, item, period, hours, grade }
+// one per "Satisfied With" entry (item null for a requirement with none),
+// which progressFromRecords turns into courses.
+const PROGRESS_COURSE_RE = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?|CORE)\s*-\s*(.+)$/;
+const PROGRESS_EXEMPTION_RE = /^(.+?\bExemption)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
+
+function cleanRequirementName(name) {
+  return name.replace(/\s*\(Click for more details\)/g, '').replace(/\s*\(Override Assigned\)/g, '').trim();
+}
+
 // Returns { courses: [...], exemptions: [...], overrides: Set }
 // Each course records the Workday requirement(s) it was listed under in
 // `requirements`, so analyze() can flag K&U claims it can't match.
-export function parseProgress(text) {
-  const lines = text
-    .replace(/\u00a0/g, ' ')
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 0);
-
-  const courseRe = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?|CORE)\s*-\s*(.+)$/;
-  const exemptionRe = /^(.+?\bExemption)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
-  const overrideRe = /\(Override Assigned\)/;
-  const periodRe = /^\d{4}\s+(Fall|Spring|Summer|Winter|Interim)$/i;
-  const hoursRe = /^\d+(?:\.\d+)?$/;
-  const gradeRe = /^[A-Z]{1,2}[+-]?$/;
-  // Status/remaining lines and page chrome that aren't requirement names.
-  const notRequirementRe = /^(Satisfied|Not Satisfied|In Progress|Satisfied With|Minimum\b.*|.*Sort and filter column)$/;
+function progressFromRecords(records) {
   const raw = [];
   const exemptions = [];
   const overrides = new Set();
-  let requirement = null;
 
-  for (let i = 0; i < lines.length; i++) {
-    // Detect overrides on requirement lines
-    if (overrideRe.test(lines[i])) {
-      const reqName = lines[i].replace(/\s*\(Click for more details\)/g, '').replace(/\s*\(Override Assigned\)/g, '').trim();
-      overrides.add(reqName);
-    }
+  for (const { requirement: rawRequirement, item, period, hours, grade } of records) {
+    const requirement = rawRequirement ? cleanRequirementName(rawRequirement) : null;
+    if (rawRequirement && /\(Override Assigned\)/.test(rawRequirement)) overrides.add(requirement);
+    if (!item) continue;
 
-    // Detect exemptions (e.g., "Language Exemption - 07/01/2023")
-    const exMatch = lines[i].match(exemptionRe);
+    // Exemptions (e.g., "Language Exemption - 07/01/2023")
+    const exMatch = item.match(PROGRESS_EXEMPTION_RE);
     if (exMatch) {
       const exName = exMatch[1].trim();
       const target = exemptionTarget(exName, requirement);
       exemptions.push({ name: exName, date: exMatch[2], target });
-      // Look ahead for hours
-      let hours = 0;
-      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-        if (hoursRe.test(lines[j])) { hours = parseFloat(lines[j]); break; }
-        if (courseRe.test(lines[j])) break;
-      }
       if (target) {
         raw.push({
           code: null, title: exName, grade: null, hours,
@@ -99,17 +85,8 @@ export function parseProgress(text) {
       continue;
     }
 
-    // Detect course lines
-    const cm = lines[i].match(courseRe);
-    if (!cm) {
-      // Any other line that isn't a field value names the requirement that
-      // following courses are listed under.
-      if (!periodRe.test(lines[i]) && !hoursRe.test(lines[i]) && !gradeRe.test(lines[i]) && !notRequirementRe.test(lines[i])) {
-        requirement = lines[i].replace(/\s*\(Click for more details\)/g, '').replace(/\s*\(Override Assigned\)/g, '').trim();
-      }
-      continue;
-    }
-
+    const cm = item.match(PROGRESS_COURSE_RE);
+    if (!cm) continue;
     let title = cm[3].trim();
     let status = 'completed';
     if (/\(In Progress\)/.test(title)) {
@@ -119,23 +96,6 @@ export function parseProgress(text) {
       status = 'transfer';
       title = title.replace(/\s*\(Transfer Credit\)/, '').trim();
     }
-
-    // Look ahead for academic period, hours, grade
-    let hours = 0;
-    let grade = null;
-    let period = null;
-    for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
-      const line = lines[j];
-      if (courseRe.test(line) || exemptionRe.test(line)) break;
-      if (periodRe.test(line)) {
-        period = line;
-      } else if (hoursRe.test(line) && hours === 0) {
-        hours = parseFloat(line);
-      } else if (gradeRe.test(line) || line === 'CR') {
-        grade = line;
-      }
-    }
-
     raw.push(courseEntry(cm[1], cm[2], { title, grade, hours, status, period,
       requirements: requirement ? [requirement] : [] }));
   }
@@ -157,6 +117,100 @@ export function parseProgress(text) {
   }
   const courses = Array.from(byCode.values());
   return { courses, exemptions, overrides };
+}
+
+// Parses copy-paste from Workday Academic Progress page: one field per line.
+export function parseProgress(text) {
+  const lines = text
+    .replace(/ /g, ' ')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+
+  const periodRe = /^\d{4}\s+(Fall|Spring|Summer|Winter|Interim)$/i;
+  const hoursRe = /^\d+(?:\.\d+)?$/;
+  const gradeRe = /^[A-Z]{1,2}[+-]?$/;
+  // Status/remaining lines and page chrome that aren't requirement names.
+  const notRequirementRe = /^(Satisfied|Not Satisfied|In Progress|Satisfied With|Minimum\b.*|.*Sort and filter column)$/;
+  const isItem = line => PROGRESS_COURSE_RE.test(line) || PROGRESS_EXEMPTION_RE.test(line);
+  const records = [];
+  let requirement = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (PROGRESS_EXEMPTION_RE.test(line)) {
+      // Look ahead for hours
+      let hours = 0;
+      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        if (hoursRe.test(lines[j])) { hours = parseFloat(lines[j]); break; }
+        if (PROGRESS_COURSE_RE.test(lines[j])) break;
+      }
+      records.push({ requirement, item: line, period: null, hours, grade: null });
+      continue;
+    }
+
+    if (!PROGRESS_COURSE_RE.test(line)) {
+      // Any other line that isn't a field value names the requirement that
+      // following courses are listed under.
+      if (!periodRe.test(line) && !hoursRe.test(line) && !gradeRe.test(line) && !notRequirementRe.test(line)) {
+        requirement = line;
+        records.push({ requirement, item: null });
+      }
+      continue;
+    }
+
+    // Look ahead for academic period, hours, grade
+    let hours = 0;
+    let grade = null;
+    let period = null;
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+      const next = lines[j];
+      if (isItem(next)) break;
+      if (periodRe.test(next)) {
+        period = next;
+      } else if (hoursRe.test(next) && hours === 0) {
+        hours = parseFloat(next);
+      } else if (gradeRe.test(next) || next === 'CR') {
+        grade = next;
+      }
+    }
+    records.push({ requirement, item: line, period, hours, grade });
+  }
+  return progressFromRecords(records);
+}
+
+// Parses the rows of a Workday "View Academic Progress for Student" .xlsx
+// export (cell values as strings; see src/xlsx.js). Each program's table
+// starts at a header row with "Requirement" and "Status" columns, and each
+// row under it is one requirement with at most one "Registrations Used"
+// entry, so no lookahead is needed. A table ends at the first row without
+// both a requirement and a status.
+export function parseProgressRows(rows) {
+  const records = [];
+  let cols = null;
+  for (const row of rows) {
+    const cells = row.map(v => (v == null ? '' : String(v).replace(/ /g, ' ').trim()));
+    const requirementCol = cells.indexOf('Requirement');
+    if (requirementCol !== -1 && cells.includes('Status')) {
+      const col = name => cells.indexOf(name);
+      cols = { requirement: requirementCol, status: col('Status'), item: col('Registrations Used'),
+        period: col('Academic Period'), hours: col('Hours'), grade: col('Grade') };
+      continue;
+    }
+    if (!cols) continue;
+    const get = key => (cols[key] === -1 ? '' : cells[cols[key]] || '');
+    if (!get('requirement') || !get('status')) { cols = null; continue; }
+    const hours = parseFloat(get('hours'));
+    records.push({
+      requirement: get('requirement'),
+      item: get('item') || null,
+      period: get('period') || null,
+      hours: Number.isFinite(hours) ? hours : 0,
+      grade: get('grade') || null,
+    });
+  }
+  return progressFromRecords(records);
 }
 
 // ========== FORMAT DETECTION ==========
