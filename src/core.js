@@ -37,6 +37,14 @@ export function parseTranscript(text) {
   return Array.from(byCode.values());
 }
 
+// Category an exemption satisfies, from its name ("Language Exemption") or the
+// requirement Workday lists it under ("World Languages I Core" for a
+// "High School Exemption").
+function exemptionTarget(name, requirement) {
+  if (/language/i.test(name) || /\bWorld Languages I\b/.test(requirement || '')) return 'World Languages I';
+  return null;
+}
+
 // ========== PROGRESS PARSER ==========
 // Parses copy-paste from Workday Academic Progress page.
 // Returns { courses: [...], exemptions: [...], overrides: Set }
@@ -74,8 +82,7 @@ export function parseProgress(text) {
     const exMatch = lines[i].match(exemptionRe);
     if (exMatch) {
       const exName = exMatch[1].trim();
-      let target = null;
-      if (/language/i.test(exName)) target = 'World Languages I';
+      const target = exemptionTarget(exName, requirement);
       exemptions.push({ name: exName, date: exMatch[2], target });
       // Look ahead for hours
       let hours = 0;

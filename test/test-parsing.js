@@ -171,6 +171,27 @@ Language Exemption - 07/01/2023
     assert.equal(exemptionEntry.exemptionTarget, 'World Languages I');
   });
 
+  it('maps an exemption to the requirement it is listed under', () => {
+    const text = `RequirementSort and filter column
+StatusSort and filter column
+Satisfied With
+
+World Languages I Core
+Satisfied
+
+High School Exemption - 08/01/2025
+0
+
+World Languages II Core
+Satisfied
+
+Other Exemption - 08/01/2025
+0`;
+    const { courses, exemptions } = parseProgress(text);
+    assert.deepEqual(exemptions.map(e => e.target), ['World Languages I', null]);
+    assert.deepEqual(courses.map(c => c.exemptionTarget), ['World Languages I']);
+  });
+
   it('detects overrides', () => {
     const text = `RequirementSort and filter column
 StatusSort and filter column
