@@ -90,6 +90,11 @@
       margin-top: 10px; padding: 16px; text-align: center; color: var(--muted);
       border: 2px dashed var(--line); border-radius: 8px; transition: border-color 0.1s, background 0.1s;
     }
+    .drop-text { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .export-hint { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+    .workday-icons { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .workday-icon { width: 24px; height: 24px; padding: 3px; box-sizing: content-box; }
+    .workday-icon.is-target { color: var(--ink); border: 2px solid var(--accent); border-radius: 999px; padding: 1px; }
     .drop-zone.dragging { border-color: var(--accent); background: var(--surface-2); color: var(--ink); }
     .file-button { position: relative; }
     .file-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
@@ -280,7 +285,16 @@
       </ol>
       <textarea id="workday-input" spellcheck="false" placeholder="Paste Workday Academic Progress or Academic History here"></textarea>
       <div class="drop-zone" id="drop-zone">
-        <span>Or drop your Academic Progress export (.xlsx) from Workday here</span>
+        <div class="drop-text">
+          <span>Or drop your Academic Progress export (.xlsx) from Workday here</span>
+          <span class="export-hint">To export, click the Excel button on Workday’s Academic Progress page (left of PDF):
+            <span class="workday-icons" role="img" aria-label="Workday’s buttons: Excel (circled), PDF, bookmark">
+              <svg class="workday-icon is-target" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h8l3 3v15H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M13 9h4M13 12h4M13 15h4" stroke="currentColor" stroke-width="1.5"/><text x="7" y="16" text-anchor="middle" font-size="10" font-weight="700" font-family="system-ui, sans-serif" fill="currentColor">X</text></svg>
+              <svg class="workday-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><text x="12" y="15.5" text-anchor="middle" font-size="7" font-weight="700" font-family="system-ui, sans-serif" fill="currentColor">PDF</text></svg>
+              <svg class="workday-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18l-5-4-5 4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </span>
+          </span>
+        </div>
         <label class="button file-button">Choose file…
           <input type="file" id="workday-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
         </label>
