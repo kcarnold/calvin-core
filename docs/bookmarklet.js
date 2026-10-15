@@ -225,7 +225,7 @@
     <details id="${R.details}">
       <summary>Calvin Core Annotator</summary>
       <p>${me(n)}</p>
-      <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here. Pasting shows opportunities immediately.</p>
+      <p>Open Workday, go to Academic Record, open Academic History (or Academic Progress), select all, copy, then paste here. Pasting shows opportunities immediately. (If any tables have multiple pages, make sure you set them to show all rows.)</p>
       <textarea id="${R.textarea}" spellcheck="false" placeholder="Paste Workday Academic History or Academic Progress here"></textarea>
       <div class="ca-launcher-actions">
         <button type="button" class="ca-launcher-button" data-action="analyze">Show core opportunities</button>
