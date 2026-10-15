@@ -497,3 +497,17 @@ describe('K&U claims we cannot match', () => {
     assert.equal(analyze(loadCategories(), transcript).kuWarnings.length, 0);
   });
 });
+
+describe('K&U room: hours that could still count per category', () => {
+  const ARTS = 'Arts, Oral Rhetoric, Visual Rhetoric';
+  it('a category at its maximum has no room; one below has the difference', () => {
+    const a = analyze(loadCategories(), [makeCourse('COMM 101', 3), makeCourse('MUSC 100', 3), makeCourse('HIST 152', 3)]);
+    assert.equal(getResult(a, ARTS).roomHours, 0);
+    assert.equal(getResult(a, 'Humanities').roomHours, 3);
+    assert.equal(getResult(a, 'Natural Sciences').roomHours, 6);
+  });
+  it('categories without a maximum have no room figure', () => {
+    const a = analyze(loadCategories(), []);
+    assert.equal(getResult(a, 'Foundational Writing').roomHours, null);
+  });
+});

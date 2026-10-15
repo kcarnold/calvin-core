@@ -155,6 +155,20 @@ describe('app fidelity to the official catalog', () => {
   }
 });
 
+describe('app summary', () => {
+  it('K&U shows where more hours would count and which categories are full', () => {
+    const catalog = CATALOGS.find(c => c._meta.catoid === '25');
+    const root = render(catalog, [makeCourse('COMM 101', 3), makeCourse('MUSC 100', 3), makeCourse('HIST 152', 3)]);
+    const chip = name => Array.from(root.querySelectorAll('.summary-chip'))
+      .find(a => norm(a.querySelector('.chip-name').textContent) === name);
+    assert.equal(norm(chip('Arts, Oral Rhetoric, Visual Rhetoric').querySelector('.chip-room').textContent), 'Full');
+    assert.equal(norm(chip('Humanities').querySelector('.chip-room').textContent), 'Room for 3 more');
+    const opp = norm(root.querySelector('.ku-opportunities').textContent);
+    assert.match(opp, /Humanities: up to 3 more hrs/);
+    assert.match(opp, /Full, so more hours there won’t count: Arts, Oral Rhetoric, Visual Rhetoric/);
+  });
+});
+
 describe('app page', () => {
   const html = readFileSync(join(ROOT, 'docs', 'index.html'), 'utf-8');
 
