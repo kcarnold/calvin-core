@@ -26,7 +26,7 @@ import { parseTranscript, parseProgress, detectInputFormat, parseCoreProgram, an
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const FIXTURES = join(__dirname, 'fixtures');
-const CATALOG_PATH = join(FIXTURES, 'catalog-24.html');
+const CATALOG_PATH = join(__dirname, '..', 'catalog', 'catalog-24.html');
 const CATALOG_URL = 'https://catalog.calvin.edu/content.php?catoid=24&navoid=780';
 
 // ---- Catalog HTML ----

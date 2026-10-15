@@ -31,6 +31,16 @@ describe('pick-one requirements', () => {
       .run(t);
   });
 
+  // The catalog lists ENGL 101, then "Or", then ENGL 100 and ENGL 102.
+  it('Foundational Writing: ENGL 100 alone is not enough; ENGL 100 + ENGL 102 is', async (t) => {
+    await scenario('Foundational Writing sequence')
+      .taken('ENGL 100', 4)
+      .expect('Foundational Writing', { status: 'incomplete' })
+      .taken('ENGL 102', 4)
+      .expect('Foundational Writing', { status: 'complete', takenCount: 2 })
+      .run(t);
+  });
+
   it('World Languages I: incomplete → take SPAN 102 → complete', async (t) => {
     await scenario('World Languages I')
       .expect('World Languages I', { status: 'incomplete' })
@@ -171,6 +181,39 @@ describe('transfer credits', () => {
       .expect('Natural Sciences', { status: 'satisfied', hours: 4 })
       .run(t);
   });
+
+  it('"Transfer credit not accepted": transfer CORE 100 does not complete Community and Commitments', async (t) => {
+    await scenario('No transfer for C&C')
+      .transfer('CORE 100', 2)
+      .expect('Community and Commitments', { status: 'incomplete', takenCount: 0 })
+      .taken('HNRS 110', 2)
+      .expect('Community and Commitments', { status: 'complete', takenCount: 1 })
+      .run(t);
+  });
+
+  it('"Must be completed at Calvin": transfer COMM 200 counts for Arts but not Rhetoric in Disciplines', async (t) => {
+    await scenario('No transfer for RiD')
+      .transfer('COMM 200', 4)
+      .expect('Arts, Oral Rhetoric, Visual Rhetoric', { status: 'satisfied', hours: 4 })
+      .expect('Rhetoric in Disciplines', { status: 'incomplete', takenCount: 0 })
+      .run(t);
+  });
+
+  it('a transfer course excluded from a requirement is annotated, not silently dropped', () => {
+    const analysis = analyze(loadCategories(), [makeCourse('CORE 100', 2, { status: 'transfer' })]);
+    const c = getResult(analysis, 'Community and Commitments').courseAnnotations.find(a => a.code === 'CORE 100');
+    assert.equal(c.isExcludedTransfer, true);
+  });
+});
+
+describe('K&U aggregate comes from the catalog wording', () => {
+  for (const catoid of ['24', '25']) {
+    it(`catalog ${catoid}: 26 hours from 5 categories`, () => {
+      const { kuSummary } = analyze(loadCategories(catoid), []);
+      assert.equal(kuSummary.requiredHours, 26);
+      assert.equal(kuSummary.requiredCategories, 5);
+    });
+  }
 });
 
 describe('lab hours are merged in analyze()', () => {

@@ -172,6 +172,24 @@ export function slugify(name) {
 }
 
 // ========== DOM PARSER ==========
+// List items that join courses rather than name a sub-discipline.
+const CONNECTORS = ['Or', 'One from', 'And'];
+const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+
+export function normalizeText(s) {
+  return (s || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// "Complete coursework totaling at least 26 semester hours from at least five of
+// the six Knowledge and Understanding categories, ..." → { minHours, minCategories, ofCategories }
+export const KU_AGGREGATE_RE = /Complete coursework totaling at least (\d+) semester hours from at least (\w+) of the (\w+) Knowledge and Understanding categories/;
+export function parseKuAggregate(instructions) {
+  const m = (instructions || '').match(KU_AGGREGATE_RE);
+  if (!m) return null;
+  const num = w => /^\d+$/.test(w) ? parseInt(w) : (NUMBER_WORDS[w.toLowerCase()] ?? null);
+  return { minHours: parseInt(m[1]), minCategories: num(m[2]), ofCategories: num(m[3]) };
+}
+
 // Accepts a root element (defaults to document in browser).
 // In tests, pass a jsdom document or a container element with querySelectorAll.
 export function parseCoreProgram(root) {
@@ -182,14 +200,19 @@ export function parseCoreProgram(root) {
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     const h2 = b.querySelector('h2'), h3 = b.querySelector('h3'), h4 = b.querySelector('h4');
-    const p = b.querySelector('p');
-    const inst = p ? p.textContent.replace(/\u00a0/g, ' ').trim() : '';
+    // Only the block's own paragraphs: list items (e.g. the "Or" connector) contain <p>s too.
+    const inst = normalizeText(Array.from(b.children).filter(el => el.tagName === 'P')
+      .map(p => p.textContent).join(' '));
     const heading = h2 || h3 || h4;
+    const coreId = heading?.querySelector('a[id^="core_"]')?.id || null;
 
     if (h2 && !h3 && !h4) {
-      section = h2.textContent.trim();
+      section = normalizeText(h2.textContent);
       if (heading) heading.id = slugify(section);
-      cats.push({ type: 'section-header', section, instructions: inst, element: b, coreIndex: i, slug: slugify(section) });
+      const header = { type: 'section-header', section, instructions: inst, element: b, coreIndex: i, slug: slugify(section), coreId };
+      const kuAggregate = parseKuAggregate(inst);
+      if (kuAggregate) header.kuAggregate = kuAggregate;
+      cats.push(header);
       continue;
     }
 
@@ -213,30 +236,157 @@ export function parseCoreProgram(root) {
     const courses = [];
     const subDisciplineElements = [];
     let curSub = null;
+    let connector = null;
+    // "A Or B C": each Or starts a new alternative; courses within one are all required.
+    const alternatives = [[]];
     if (ul) {
       for (const li of ul.children) {
         if (li.classList.contains('acalog-adhoc')) {
-          const t = li.textContent.trim();
-          if (!['Or', 'One from', 'And'].includes(t)) {
+          const t = normalizeText(li.textContent);
+          if (CONNECTORS.includes(t)) {
+            connector = t;
+            if (t === 'Or') alternatives.push([]);
+          } else {
             curSub = t;
             subDisciplineElements.push({ name: t, element: li });
           }
         } else if (li.classList.contains('acalog-course')) {
           const link = li.querySelector('a');
-          const lt = link ? link.textContent.trim() : '';
+          const lt = link ? normalizeText(link.textContent) : '';
           const cm = lt.match(/^([A-Z]{2,5})\s+(\d{3}[A-Z]?)\s*-\s*(.+)$/);
-          if (cm) courses.push({ code: cm[1] + ' ' + cm[2], title: cm[3].trim(), subDiscipline: curSub, element: li });
+          if (!cm) continue;
+          const coid = (link.getAttribute('onclick') || '').match(/showCourse\('\d+',\s*'(\d+)'/)?.[1] || null;
+          const course = { code: cm[1] + ' ' + cm[2], title: cm[3].trim(), subDiscipline: curSub, coid, element: li };
+          if (connector) { course.connectorBefore = connector; connector = null; }
+          courses.push(course);
+          alternatives[alternatives.length - 1].push(course.code);
         }
       }
     }
 
-    cats.push({
+    const cat = {
       type: isTag ? 'tag' : 'category', section, name, instructions: inst,
       reqType, minHours: minH, maxHours: maxH, maxPerDiscipline: maxPD,
-      courses, subDisciplineElements, element: b, coreIndex: i, slug: slugify(name)
-    });
+      courses, subDisciplineElements, element: b, coreIndex: i, slug: slugify(name), coreId
+    };
+    if (alternatives.length > 1) cat.alternatives = alternatives;
+    cats.push(cat);
   }
   return cats;
+}
+
+// ========== CATALOG INSTRUCTION RULES ==========
+// Every sentence of catalog instructions must match exactly one rule here
+// (test/test-catalog-claims.js enforces this for each saved catalog). A rule is
+// either `checked` (analyze() enforces it, and `verify` confirms the parsed
+// fields agree with the wording) or not, in which case the app shows the
+// sentence as not checked (or as advice), with `note` explaining what that means.
+export const INSTRUCTION_RULES = [
+  {
+    id: 'pick-one', checked: true,
+    re: /^Complete one of the following courses\.$/,
+    verify: cat => cat.reqType === 'pick-one' || 'expected a pick-one requirement',
+  },
+  {
+    id: 'hour-range', checked: true,
+    re: /^Complete coursework totaling (\d+)–(\d+) semester hours(?:, with up to (\d+) semester hours in any one discipline)?\.$/,
+    verify: (cat, m) => (cat.reqType === 'hour-range' && cat.minHours === +m[1] && cat.maxHours === +m[2]
+      && cat.maxPerDiscipline === (m[3] ? +m[3] : null)) || 'parsed hours disagree with the wording',
+  },
+  {
+    id: 'discipline-headings', checked: true,
+    re: /^Headings below designate the disciplines\.$/,
+    verify: cat => (cat.courses.length > 0 && cat.courses.every(c => c.subDiscipline)) || 'every course should sit under a discipline heading',
+  },
+  {
+    id: 'no-transfer', checked: true,
+    re: /^(?:Transfer credit not accepted|This requirement must be completed at Calvin)\.$/,
+    verify: cat => isTransferExcluded(cat) || 'transfer exclusion not detected',
+  },
+  {
+    id: 'may-overlap', checked: true,
+    re: /^(?:Engaged Citizenship Commitment courses may|May) overlap with other core requirements\.$/,
+    // analyze() counts every course toward every requirement that lists it.
+  },
+  {
+    id: 'three-tags', checked: true,
+    re: /^Complete at least one tagged course in all three areas\.$/,
+    verify: (cat, m, cats) => cats.filter(c => c.type === 'tag' && c.section === cat.section).length === 3
+      || 'expected three tag requirements in this section',
+  },
+  {
+    id: 'ku-aggregate', checked: true,
+    re: /^Complete coursework totaling at least (\d+) semester hours from at least (\w+) of the (\w+) Knowledge and Understanding categories, including at least (\d+) semester hours from each of the following categories: (.+)\.$/,
+    verify: (cat, m, cats) => {
+      const agg = cat.kuAggregate;
+      if (!agg || agg.minHours !== +m[1] || agg.ofCategories !== KU_NAMES.length) return 'K&U aggregate not parsed from the wording';
+      for (const name of m[5].split(';').map(s => s.trim())) {
+        const c = cats.find(x => x.name === name);
+        if (!c || c.minHours !== +m[4]) return `"${name}" should require at least ${m[4]} hours`;
+      }
+      return true;
+    },
+  },
+  {
+    id: 'world-languages-ii', checked: false, partial: true,
+    re: /^Complete (\d+)–(\d+) semester hours of coursework numbered 201 or higher in a language other than English OR complete 101-102 \(8 semester hours\) in a different language from coursework completed for World Languages I\.$/,
+    verify: (cat, m) => (cat.minHours === +m[1] && cat.maxHours === +m[2]) || 'parsed hours disagree with the wording',
+    note: 'Hours from the listed courses are checked; the 101–102 option in a second language is not.',
+  },
+  {
+    id: 'calvin-foundations', checked: false,
+    re: /^One Foundations of Christianity course must be completed at Calvin University\.$/,
+    note: 'Transfer credit still counts here.',
+  },
+  {
+    id: 'no-test-credit', checked: false,
+    re: /^Test credit, including Advanced Placement, CLEP, and International Baccalaureate, may not satisfy Engaged Citizenship Commitment requirements\.$/,
+    note: 'Workday transfer credit isn’t distinguished from test credit.',
+  },
+  {
+    id: 'exemption', checked: false,
+    re: /^(?:A student participating at Calvin in a varsity sport for two full seasons is exempt|Completion of ROTC or other military training exempts a student from both Health and Movement requirements|High school exemption from World Languages I is possible|To obtain a high school exemption, .+|\(Near\) native speakers of a language other than English are exempt from World Languages I)\.$/,
+    note: 'Exemptions are recognized only when Academic Progress lists them.',
+  },
+  {
+    id: 'advice', checked: false, advice: true,
+    re: /^(?:\d+ courses have a prerequisite of \d+|Students are encouraged to take 4 semester hour courses when possible)\.$/,
+    note: 'Advice, nothing to check.',
+  },
+];
+
+// Split on sentence-ending periods, including ones the catalog runs together
+// ("courses.Transfer credit not accepted.").
+export function splitSentences(text) {
+  return normalizeText(text).split(/(?<=\.)\s+|(?<=[a-z]\.)(?=[A-Z])/).filter(Boolean);
+}
+
+// → [{ text, rule, match }]; rule is null for wording no rule recognizes.
+export function classifyInstructions(text) {
+  return splitSentences(text).map(sentence => {
+    for (const rule of INSTRUCTION_RULES) {
+      const match = sentence.match(rule.re);
+      if (match) return { text: sentence, rule, match };
+    }
+    return { text: sentence, rule: null, match: null };
+  });
+}
+
+// Requirements whose courses may also count toward any other requirement.
+// The tags say so in the catalog ("May overlap with other core requirements.");
+// Rhetoric in Disciplines doesn't, but was confirmed 2026-10-15.
+const OVERLAP_CONFIRMED_NAMES = ['Rhetoric in Disciplines'];
+export function overlapConfirmed(cat) {
+  return cat?.type === 'tag' || OVERLAP_CONFIRMED_NAMES.includes(cat?.name);
+}
+
+// Can one course count toward both requirements? Confirmed when either one allows overlap.
+export function doubleCountConfirmed(catA, catB) {
+  return overlapConfirmed(catA) || overlapConfirmed(catB);
+}
+
+export function isTransferExcluded(cat) {
+  return classifyInstructions(cat.instructions).some(s => s.rule?.id === 'no-transfer');
 }
 
 // ========== ANALYSIS ==========
@@ -356,6 +506,7 @@ export function analyze(cats, transcript, options = {}) {
       if (!c2c[code].includes(name)) c2c[code].push(name);
     }
   }
+  const kuAggregate = cats.find(c => c.kuAggregate)?.kuAggregate;
   const kuH = {}; let kuTotal = 0, kuCount = 0;
   const results = [];
 
@@ -386,13 +537,17 @@ export function analyze(cats, transcript, options = {}) {
     // Taken courses this page doesn't list here but another known catalog does.
     // They have no element on the page; render lists them in a note.
     const pageCodes = new Set(cat.courses.map(c => c.code));
+    // "Transfer credit not accepted" / "must be completed at Calvin".
+    const transferExcluded = isTransferExcluded(cat);
+    const isExcludedTransfer = code => transferExcluded && takenMap[code]?.status === 'transfer';
+    const countsHere = code => allActiveSet.has(code) && !isExcludedTransfer(code);
     const extraHere = Object.entries(extraCourses[cat.name] || {})
       .filter(([code]) => !pageCodes.has(code) && allActiveSet.has(code))
       .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isFromOtherCatalog: true }));
     for (const [code, subDiscipline] of Object.entries(assumedCourses[cat.name] || {})) {
       if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isAssumed: true });
     }
-    const takenHere = [...cat.courses, ...extraHere].filter(c => allActiveSet.has(c.code));
+    const takenHere = [...cat.courses, ...extraHere].filter(c => countsHere(c.code));
     let hrsRaw = 0; const hByD = {};
     const counted = new Set();  // a lecture and its merged lab share one transcript entry
     for (const c of takenHere) {
@@ -406,7 +561,11 @@ export function analyze(cats, transcript, options = {}) {
     if (cat.maxPerDiscipline) for (const [d, h] of Object.entries(hByD)) if (h >= cat.maxPerDiscipline) maxedD.add(d);
     const hasRemainingCourseOptions = cat.courses.some(c => !allActiveSet.has(c.code) && !maxedD.has(c.subDiscipline || 'General'));
     let status;
-    if (cat.reqType === 'pick-one') status = takenHere.length > 0 ? 'complete' : 'incomplete';
+    if (cat.reqType === 'pick-one') {
+      // With alternatives (ENGL 101 Or ENGL 100 + ENGL 102), one whole alternative is needed.
+      const done = cat.alternatives ? cat.alternatives.some(alt => alt.every(countsHere)) : takenHere.length > 0;
+      status = done ? 'complete' : 'incomplete';
+    }
     else {
       const minReq = cat.minHours || 0;
       if (hrsRaw < minReq) status = 'incomplete';
@@ -439,7 +598,7 @@ export function analyze(cats, transcript, options = {}) {
       const otherCats = allCats.filter(n => n !== cat.name);
       const tc = takenMap[c.code];
       return { ...c, isTaken, isInProgress, isMultiSection: allCats.length > 1, otherCategories: otherCats,
-        isPlanned,
+        isPlanned, isExcludedTransfer: isExcludedTransfer(c.code),
         isMaxedDiscipline: maxedD.has(c.subDiscipline || 'General') && !isActive,
         grade: isActive ? (tc?.grade || '') : '', hours: isActive ? (tc?.hours || 0) : 0,
         isTransfer: tc?.status === 'transfer' };
@@ -455,7 +614,7 @@ export function analyze(cats, transcript, options = {}) {
   const countedInKU = new Set();
   for (const r of results) {
     if (!KU_NAMES.includes(r.name) || !r.courseAnnotations) continue;
-    for (const c of r.courseAnnotations) if (allActiveSet.has(c.code)) countedInKU.add(c.code);
+    for (const c of r.courseAnnotations) if (allActiveSet.has(c.code) && !c.isExcludedTransfer) countedInKU.add(c.code);
   }
   const kuWarnings = [];
   for (const c of mergedTranscript) {
@@ -476,6 +635,8 @@ export function analyze(cats, transcript, options = {}) {
     plannedCourses: Array.from(plannedSet),
     overrides: options.overrides || new Set(),
     exemptions: exemptionEntries,
-    kuSummary: { totalHours: kuTotal, requiredHours: 26, categoriesUsed: kuCount, requiredCategories: 5, hoursByCategory: kuH }
+    // Read from the catalog's K&U section wording; null if it couldn't be parsed.
+    kuSummary: { totalHours: kuTotal, requiredHours: kuAggregate?.minHours ?? null, categoriesUsed: kuCount,
+      requiredCategories: kuAggregate?.minCategories ?? null, hoursByCategory: kuH }
   };
 }

@@ -441,6 +441,9 @@ export function render({ results, kuSummary, transcript, plannedCourses, kuWarni
       if (c.isInProgress) {
         li.classList.add('ca-course-in-progress');
         li.setAttribute('data-ca-note', '\u23F3 In Progress (' + c.hours + 'h)');
+      } else if (c.isExcludedTransfer) {
+        li.classList.add('ca-course-transfer');
+        li.setAttribute('data-ca-note', 'Transfer (' + c.hours + 'h) \u2014 not accepted for this requirement');
       } else if (c.isTransfer) {
         li.classList.add('ca-course-transfer');
         li.setAttribute('data-ca-note', '\u2713 Transfer (' + c.hours + 'h)');

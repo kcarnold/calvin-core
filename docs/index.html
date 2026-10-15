@@ -3,217 +3,242 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Calvin Core Annotator Bookmarklet</title>
+  <!-- Pasted Workday data stays in the browser: this page may not send network requests. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>Core Planner</title>
+  <meta name="description" content="Unofficial planning aid: check your Workday courses against Calvin's core requirements.">
   <style>
     :root {
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --surface-2: #f8f9fb;
+      --ink: #1b2330;
+      --muted: #5d6879;
+      --line: #dde1e8;
+      --accent: #3d4fd6;
+      --accent-ink: #ffffff;
+      --done: #1f7a4d;
+      --done-bg: #e3f4ea;
+      --min: #2457b3;
+      --min-bg: #e5edfb;
+      --todo: #9a5b00;
+      --todo-bg: #fdf0d9;
+      --plan: #8a3fb8;
+      --plan-bg: #f3e8fb;
+      --warn: #a2341b;
+      --warn-bg: #fdece7;
+      --radius: 12px;
       color-scheme: light;
-      --bg: #f5f1e8;
-      --panel: #fffdf8;
-      --ink: #1d2b2e;
-      --muted: #57686b;
-      --accent: #1d5c63;
-      --accent-dark: #143f44;
-      --border: #d8d0c2;
     }
-
-    * {
-      box-sizing: border-box;
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #12151b;
+        --surface: #1b2029;
+        --surface-2: #222833;
+        --ink: #e6e9ef;
+        --muted: #9aa4b5;
+        --line: #303846;
+        --accent: #8d9bff;
+        --accent-ink: #12151b;
+        --done: #6fd39d;
+        --done-bg: #183427;
+        --min: #8db4ff;
+        --min-bg: #1b2a45;
+        --todo: #f2b45a;
+        --todo-bg: #3a2c14;
+        --plan: #d3a1f2;
+        --plan-bg: #33213f;
+        --warn: #ff9b82;
+        --warn-bg: #3d1f18;
+        color-scheme: dark;
+      }
     }
-
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font: 16px/1.5 Georgia, "Times New Roman", serif;
+      background: var(--bg);
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(29, 92, 99, 0.14), transparent 28%),
-        linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
+    a { color: var(--accent); }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
 
-    main {
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 48px 20px 72px;
-    }
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+    .topbar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 14px; padding-bottom: 14px; }
+    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
+    .unofficial { font-size: 12px; font-weight: 600; color: var(--warn); background: var(--warn-bg); padding: 2px 8px; border-radius: 999px; }
+    .year-picker { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+    select { font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
 
-    h1,
-    h2 {
-      line-height: 1.1;
-      margin: 0;
-      font-weight: 700;
-    }
+    .notice { margin: 20px 0 0; padding: 14px 16px; border-left: 4px solid var(--accent); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; }
+    .notice p { margin: 0; }
+    .notice p + p { margin-top: 6px; color: var(--muted); font-size: 14px; }
 
-    h1 {
-      font-size: clamp(2.4rem, 5vw, 4rem);
-      letter-spacing: -0.03em;
-    }
-
-    h2 {
-      font-size: 1.3rem;
-      margin-bottom: 12px;
-    }
-
-    p,
-    li {
-      color: var(--muted);
-    }
-
-    .hero,
-    .card {
-      background: color-mix(in srgb, var(--panel) 92%, white 8%);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      box-shadow: 0 12px 30px rgba(33, 40, 41, 0.08);
-    }
-
-    .hero {
-      padding: 32px;
-      margin-bottom: 22px;
-    }
-
-    .eyebrow {
-      display: inline-block;
-      margin-bottom: 14px;
-      font: 700 0.8rem/1.2 Arial, Helvetica, sans-serif;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--accent);
-    }
-
-    .lede {
-      max-width: 54ch;
-      margin: 16px 0 0;
-      font-size: 1.05rem;
-    }
-
-    .actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 24px;
-      font-family: Arial, Helvetica, sans-serif;
-    }
-
-    .button {
-      display: inline-block;
-      padding: 12px 18px;
-      border: 1px solid var(--accent);
-      border-radius: 999px;
-      background: var(--accent);
-      color: #fff;
-      text-decoration: none;
-      font-weight: 700;
-    }
-
-    .button:hover {
-      background: var(--accent-dark);
-      border-color: var(--accent-dark);
-    }
-
-    .button.secondary {
-      background: transparent;
-      color: var(--accent);
-    }
-
-    .card {
-      padding: 24px;
-      margin-top: 18px;
-    }
-
-    ol,
-    ul {
-      margin: 0;
-      padding-left: 22px;
-    }
-
-    li + li {
-      margin-top: 10px;
-    }
-
-    code,
+    .input-card { margin: 16px 0 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+    .input-card h2 { margin: 0 0 6px; font-size: 17px; }
+    .input-card ol { margin: 0 0 12px; padding-left: 20px; color: var(--muted); }
     textarea {
-      font: 13px/1.45 Menlo, Consolas, Monaco, monospace;
+      width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px;
+      font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--ink);
+      background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
     }
+    textarea:focus, select:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .input-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+    .button { font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; }
+    .status { font-size: 14px; color: var(--muted); }
+    .status-ok { color: var(--done); }
+    .status-error { color: var(--warn); }
+    .privacy { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
 
-    textarea {
-      width: 100%;
-      min-height: 120px;
-      margin-top: 12px;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: #fcfaf5;
-      color: #314042;
-      resize: vertical;
-    }
+    #results { padding-bottom: 48px; }
+    #results h2 { font-size: 18px; margin: 0 0 8px; }
 
-    .bookmarklet-link {
-      font-weight: 700;
-    }
+    .summary, .callout, .transcript { margin-top: 20px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+    .summary h2 { margin-bottom: 0 !important; }
+    .summary-sub { margin: 2px 0 8px; color: var(--muted); font-size: 13px; }
+    .summary-group h3 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .summary-chips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+    .summary-chip { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-left-width: 4px; height: 100%; }
+    .summary-chip:hover { border-color: var(--accent); }
+    .chip-name { font-size: 13px; }
+    .chip-value { font-size: 13px; font-weight: 700; }
+    .summary-chip.status-done { border-left-color: var(--done); }
+    .summary-chip.status-done .chip-value { color: var(--done); }
+    .summary-chip.status-min { border-left-color: var(--min); }
+    .summary-chip.status-min .chip-value { color: var(--min); }
+    .summary-chip.status-todo { border-left-color: var(--todo); }
+    .summary-chip.status-todo .chip-value { color: var(--todo); }
+    .summary-chip.status-optional .chip-value { color: var(--muted); }
+    .ku-meter { margin: 0 0 8px; }
+    .ku-numbers { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin-bottom: 4px; }
+    .meter { height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+    .meter-fill { height: 100%; background: var(--todo); }
+    .ku-meter.is-met .meter-fill { background: var(--done); }
 
-    .note {
-      margin-top: 12px;
-      font-size: 0.95rem;
-    }
+    .callout ul { margin: 0; padding-left: 20px; }
+    .callout li + li { margin-top: 4px; }
+    .callout-warn { background: var(--warn-bg); border-color: transparent; }
+    .callout-warn h2 { color: var(--warn); }
 
-    .small {
-      font-size: 0.95rem;
-    }
+    .req-section { margin-top: 32px; }
+    .req-section-title { font-size: 13px !important; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    .req-section > .catalog-wording { margin: 8px 0 12px; }
 
-    a {
-      color: var(--accent);
-    }
+    .req { margin-top: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); scroll-margin-top: 16px; }
+    .req.status-done { border-left: 4px solid var(--done); }
+    .req.status-min { border-left: 4px solid var(--min); }
+    .req.status-todo { border-left: 4px solid var(--todo); }
+    .req-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .req-name { margin: 0; font-size: 16px; flex: 1 1 auto; }
+    .tag-label { font-size: 12px; color: var(--muted); }
+    .status-pill { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+    .status-pill.status-done { color: var(--done); background: var(--done-bg); }
+    .status-pill.status-min { color: var(--min); background: var(--min-bg); }
+    .status-pill.status-todo { color: var(--todo); background: var(--todo-bg); }
+    .status-pill.status-optional { color: var(--muted); background: var(--surface-2); }
 
-    @media (max-width: 640px) {
-      .hero,
-      .card {
-        padding: 22px;
-      }
+    .catalog-wording { list-style: none; margin: 8px 0 0; padding: 0; font-size: 14px; }
+    .sentence { padding: 3px 0 3px 10px; border-left: 2px solid var(--line); }
+    .sentence.is-unchecked, .sentence.is-partial { border-left-color: var(--todo); }
+    .sentence-check { margin-left: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .sentence.is-checked .sentence-check { color: var(--done); }
+    .sentence.is-unchecked .sentence-check, .sentence.is-partial .sentence-check { color: var(--todo); }
+    .sentence-note { display: block; font-size: 12px; color: var(--muted); }
+    .req-note, .req-hours, .req-taken, .req-source { margin: 8px 0 0; font-size: 14px; }
+    .req-note, .req-source { color: var(--muted); }
+    .req-source { font-size: 13px; }
+
+    .extra-courses { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--min-bg); font-size: 14px; }
+    .extra-courses .extra-label { margin: 0 0 4px; font-weight: 600; }
+    .extra-courses ul { margin: 0; padding-left: 18px; }
+    .extra-course[data-provenance="assumed"] { color: var(--warn); }
+
+    .course-options { margin-top: 10px; }
+    .course-options summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--accent); }
+    .course-list { list-style: none; margin: 8px 0 0; padding: 0; }
+    .course { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; padding: 5px 8px; border-radius: 6px; font-size: 14px; }
+    .course:nth-child(even) { background: var(--surface-2); }
+    .course-code { font-weight: 600; white-space: nowrap; min-width: 80px; }
+    .course-title { flex: 1 1 200px; }
+    .course-flags { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; font-size: 12px; }
+    .course.is-active { background: var(--done-bg); }
+    .course.is-planned { background: var(--plan-bg); }
+    .course.is-excluded { background: var(--warn-bg); }
+    .course.is-maxed { opacity: 0.55; }
+    .course-heading { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; font-weight: 700; font-size: 13px; }
+    .course-connector { padding: 4px 8px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .chip { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+    .chip-taken { color: var(--done); background: var(--done-bg); border: 1px solid currentColor; }
+    .chip-progress { color: var(--min); background: var(--min-bg); }
+    .chip-planned { color: var(--plan); background: var(--surface); }
+    .chip-excluded { color: var(--warn); background: var(--surface); }
+    .chip-min { color: var(--min); background: var(--min-bg); }
+    .chip-muted { color: var(--muted); background: var(--surface-2); font-weight: 500; }
+    .also { color: var(--muted); }
+    .plan-toggle { margin-left: auto; font: inherit; font-size: 12px; font-weight: 600; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--plan); color: var(--plan); background: transparent; cursor: pointer; }
+    .plan-toggle.is-on { background: var(--plan); color: var(--surface); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .cell-status { display: block; font-size: 12px; color: var(--muted); }
+    .muted { color: var(--muted); }
+
+    footer { border-top: 1px solid var(--line); padding: 20px 0 40px; font-size: 13px; color: var(--muted); }
+    footer p { margin: 4px 0; }
+
+    @media (max-width: 560px) {
+      .course-code { min-width: 0; }
+      .plan-toggle { margin-left: 0; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <section class="hero">
-      <span class="eyebrow">Calvin Core Annotator</span>
-      <p class="lede">This bookmarklet loads the latest annotator script each time you click it on the Calvin catalog core-program page.</p>
-      <div class="actions">
-        <a class="button bookmarklet-link" href="javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/bookmarklet.js';const id='ca-bookmarklet-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();">Calvin Core Annotator</a>
-        <a class="button secondary" href="https://catalog.calvin.edu/content.php?catoid=25&amp;navoid=803">2026–27 core page</a>
-        <a class="button secondary" href="https://catalog.calvin.edu/content.php?catoid=24&amp;navoid=780">2025–26 core page</a>
-        <a class="button secondary" href="./overlap.html">Program overlap viewer</a>
+  <header class="topbar">
+    <div class="wrap">
+      <div class="brand">
+        <h1>Core Planner</h1>
+        <span class="unofficial">Unofficial</span>
       </div>
-      <p class="note">Desktop browsers usually let you drag the bookmarklet link straight into the bookmarks bar.</p>
-    </section>
+      <label class="year-picker">Requirements from the
+        <select id="catalog-select" aria-label="Catalog year"></select>
+      </label>
+    </div>
+  </header>
 
-    <section class="card">
-      <h2>Install</h2>
+  <div class="wrap">
+    <div class="notice">
+      <p><strong>Workday is the official record.</strong> Your Academic Progress page in Workday is the system of record for your core requirements. This page is a planning aid: if it disagrees with Workday, go with Workday and ask your advisor or the Registrar.</p>
+      <p>Requirements here are copied from the <a data-catalog-link href="#" target="_blank" rel="noopener"><span data-catalog-year></span> Calvin catalog</a> as saved on <span data-catalog-saved></span>. Use the catalog for the year you entered Calvin. Each sentence of catalog wording is marked as checked or not checked by this tool.</p>
+    </div>
+
+    <section class="input-card" aria-labelledby="input-heading">
+      <h2 id="input-heading">Paste your courses from Workday</h2>
       <ol>
-        <li>Show your browser bookmarks bar.</li>
-        <li>Drag the <strong>Calvin Core Annotator</strong> link above into the bar.</li>
-        <li>Open the Calvin catalog core-program page.</li>
-        <li>Click the bookmark you just added.</li>
+        <li>In Workday, open Academic Record, then Academic Progress (or Academic History).</li>
+        <li>If a table has several pages, set it to show all rows.</li>
+        <li>Select all (Ctrl/⌘-A), copy, and paste below.</li>
       </ol>
-      <p class="note">If drag-and-drop is awkward, create a new bookmark manually and paste the URL below into the bookmark URL field.</p>
-      <textarea readonly>javascript:(()=>{const src='https://kcarnold.github.io/calvin-core/bookmarklet.js';const id='ca-bookmarklet-script';document.getElementById(id)?.remove();const script=document.createElement('script');script.id=id;script.src=src+'?v='+Date.now();script.async=true;(document.head||document.documentElement).appendChild(script);})();</textarea>
+      <textarea id="workday-input" spellcheck="false" placeholder="Paste Workday Academic Progress or Academic History here"></textarea>
+      <div class="input-actions">
+        <button type="button" class="button" id="clear-button">Clear</button>
+        <span id="status" class="status" role="status" aria-live="polite"></span>
+      </div>
+      <p class="privacy">Everything runs in your browser. What you paste isn’t uploaded or saved anywhere, and is gone when you close or reload this page.</p>
     </section>
 
-    <section class="card">
-      <h2>Use</h2>
-      <ol>
-        <li>In Workday, open Academic Record, then Academic History.</li>
-        <li>Select all of the transcript content and copy it.</li>
-        <li>On the catalog page, click the bookmarklet.</li>
-        <li>Paste the transcript into the panel that appears above the core requirements.</li>
-      </ol>
-    </section>
+    <main id="results"></main>
+  </div>
 
-    <section class="card">
-      <h2>Notes</h2>
-      <ul>
-        <li>This tool is unofficial and should be treated as a planning aid, not an official degree audit.</li>
-      </ul>
-      <p class="small"><a href="https://github.com/kcarnold/calvin-core">Source on GitHub</a></p>
-    </section>
-  </main>
+  <footer>
+    <div class="wrap">
+      <p>An unofficial planning aid, not a degree audit. Course links open the official catalog.</p>
+      <p><a href="./bookmarklet.html">Bookmarklet for the catalog page</a> · <a href="./overlap.html">Program overlap viewer</a> · <a href="https://github.com/kcarnold/calvin-core">Source</a></p>
+    </div>
+  </footer>
+
+  <script src="./app.js"></script>
 </body>
 </html>

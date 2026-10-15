@@ -26,7 +26,7 @@ const _cached = new Map();
 /** catoid '25' = 2026-27 catalog (default), '24' = 2025-26. */
 export function loadCategories(catoid = '25') {
   if (!_cached.has(catoid)) {
-    const path = join(__dirname, 'fixtures', `catalog-categories-${catoid}.json`);
+    const path = join(__dirname, '..', 'catalog', `catalog-categories-${catoid}.json`);
     _cached.set(catoid, JSON.parse(readFileSync(path, 'utf-8')).categories);
   }
   return _cached.get(catoid);

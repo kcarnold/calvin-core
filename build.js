@@ -44,4 +44,14 @@ await esbuild.build({
   sourcemap: false,
 });
 
-console.log('Built dist/extension.js, dist/bookmarklet.js, docs/bookmarklet.js, and docs/overlap-view.js');
+// Standalone app (docs/index.html), with the saved catalogs bundled in.
+await esbuild.build({
+  ...common,
+  entryPoints: ['src/app.js'],
+  outfile: 'docs/app.js',
+  format: 'iife',
+  minify: true,
+  sourcemap: false,
+});
+
+console.log('Built docs/app.js, dist/extension.js, dist/bookmarklet.js, docs/bookmarklet.js, and docs/overlap-view.js');
