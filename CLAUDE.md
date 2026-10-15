@@ -21,7 +21,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - "Transfer credit not accepted" / "must be completed at Calvin" exclude `transfer` courses from that requirement (`isExcludedTransfer` annotation; app warns).
 - Double counting: a course listed under two requirements counts toward both. Confirmed when either is a tag or Rhetoric in Disciplines (`overlapConfirmed` in `core.js`, confirmed 2026-10-15); the claims test fails on any other overlap, and the app lists unconfirmed ones as an assumption.
 - World Languages II's 101–102 option: issue #2 (use Workday listing a language course under K&U).
-- Foundational Writing's list is "ENGL 101 Or ENGL 100 ENGL 102": parsed as `alternatives` [[101], [100, 102]]; a whole alternative is needed.
+- Foundational Writing's list is "ENGL 101 Or ENGL 100 ENGL 102": parsed as `alternatives` [[101], [100, 102]]; a whole alternative is needed. (ENGL 100 is a prerequisite of ENGL 102, so this mostly just surfaces the prerequisite; no need to handle it specially.)
 
 ## Project Structure
 
@@ -99,7 +99,8 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 ## Workday Requirement Listings
 
 - `WORKDAY_REQUIREMENTS` / `workdayRequirementCategory` in `core.js` map Academic Progress requirement names ("Global Regions and Cultures Core") to catalog names. `test-xlsx.js` checks every core requirement in the sample export maps.
-- Pick-one requirements (without `alternatives`) count a course Workday lists under them even if no catalog does (overrides, section-specific tags): `isFromWorkday` annotation, no `element`, shown as a labeled `.extra-course` (provenance `workday`). Hour-range and alternatives requirements don't; they get a `warnings` entry instead.
+- A course Workday lists under a requirement counts toward it (though doesn't necessarily satisfy it). Pick-one requirements count such a course even if no catalog lists it (overrides, section-specific tags): `isFromWorkday` annotation, no `element`, shown as a labeled `.extra-course` (provenance `workday`). Hour-range requirements (K&U) can't place it in a sub-discipline, so they get a `warnings` entry instead.
+- Not yet read: the .xlsx Status column. It could cross-check our status against Workday's, if that proves worth the complexity.
 
 ## Requirement Rules
 

@@ -637,9 +637,8 @@ export function analyze(cats, transcript, options = {}) {
       if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isAssumed: true });
     }
     // Pick-one: Workday is the official record, so a course it lists here counts
-    // (overrides, section-specific tags). Not for hour-range (needs a sub-discipline) or
-    // alternatives (Workday lists ENGL 100 before ENGL 102 is done); those are warned below.
-    if (cat.reqType === 'pick-one' && !cat.alternatives) {
+    // (overrides, section-specific tags). Not for hour-range (needs a sub-discipline); warned below.
+    if (cat.reqType === 'pick-one') {
       for (const code of workdayCourses[cat.name] || []) {
         if (pageCodes.has(code) || extraHere.some(e => e.code === code) || !allActiveSet.has(code)) continue;
         extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline: null, element: null, isFromWorkday: true });
@@ -661,7 +660,9 @@ export function analyze(cats, transcript, options = {}) {
     let status;
     if (cat.reqType === 'pick-one') {
       // With alternatives (ENGL 101 Or ENGL 100 + ENGL 102), one whole alternative is needed.
-      const done = cat.alternatives ? cat.alternatives.some(alt => alt.every(countsHere)) : takenHere.length > 0;
+      const done = cat.alternatives
+        ? cat.alternatives.some(alt => alt.every(countsHere)) || takenHere.some(c => c.isFromWorkday)
+        : takenHere.length > 0;
       status = done ? 'complete' : 'incomplete';
     }
     else {

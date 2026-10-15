@@ -519,14 +519,11 @@ describe('Courses Workday lists under a requirement the catalog does not', () =>
     assertStatus(analysis, GRC, { status: 'incomplete' });
   });
 
-  it('does not complete a requirement with alternatives (ENGL 100 alone), but does warn on unlisted courses', () => {
-    const FW = 'Competencies & Skills: Foundational Writing Core';
-    const listed = analyze(loadCategories(), [{ ...makeCourse('ENGL 100', 3), requirements: [FW] }]);
-    assertStatus(listed, 'Foundational Writing', { status: 'incomplete' });
-    assert.deepEqual(listed.warnings, []);
-    const unlisted = analyze(loadCategories(), [{ ...makeCourse('ENGL 199', 3), requirements: [FW] }]);
-    assertStatus(unlisted, 'Foundational Writing', { status: 'incomplete' });
-    assert.deepEqual(unlisted.warnings.map(w => [w.code, w.requirement]), [['ENGL 199', 'Foundational Writing']]);
+  it('completes a requirement with alternatives too (Foundational Writing)', () => {
+    const transcript = [{ ...makeCourse('ENGL 199', 3), requirements: ['Competencies & Skills: Foundational Writing Core'] }];
+    const analysis = analyze(loadCategories(), transcript);
+    assertStatus(analysis, 'Foundational Writing', { status: 'complete' });
+    assert.deepEqual(analysis.warnings, []);
   });
 
   it('a requirement not on this catalog page is ignored', () => {
