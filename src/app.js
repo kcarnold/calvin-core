@@ -119,7 +119,7 @@ function analyzeInput(catalog) {
 
 function renderResults(catalog, analysis) {
   renderApp($('results'), {
-    catalog, catalogs: CATALOGS, analysis, openLists: state.openLists,
+    catalog, catalogs: CATALOGS, analysis, openLists: state.openLists, tocRoot: $('toc'),
     onTogglePlanned: code => {
       if (state.plannedCourses.has(code)) state.plannedCourses.delete(code);
       else state.plannedCourses.add(code);
@@ -127,10 +127,59 @@ function renderResults(catalog, analysis) {
     },
     onListToggle: (slug, open) => state.openLists.set(slug, open),
   });
+  highlightToc();
+}
+
+// Marks the contents entry for the section or requirement at the top of the
+// window.
+function highlightToc() {
+  let current = null;
+  for (const el of $('results').querySelectorAll('.req-section, .req')) {
+    if (el.getBoundingClientRect().top > 80) break;
+    current = el.id;
+  }
+  for (const a of $('toc').querySelectorAll('.toc-link')) {
+    const active = a.dataset.slug === current;
+    a.classList.toggle('is-active', active);
+    if (active) a.setAttribute('aria-current', 'location');
+    else a.removeAttribute('aria-current');
+  }
+}
+
+function initToc() {
+  const toc = $('toc');
+  const toggle = $('toc-toggle');
+  const setOpen = open => {
+    toc.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.textContent = open ? 'Close contents' : 'Contents';
+  };
+  toggle.addEventListener('click', () => setOpen(!toc.classList.contains('is-open')));
+  toc.addEventListener('click', e => { if (e.target.closest('a')) setOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setOpen(false); });
+
+  let pending = false;
+  window.addEventListener('scroll', () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      highlightToc();
+      // Keep the active entry visible in the sidebar (scrolling only the
+      // sidebar; scrollIntoView could scroll the page too).
+      const active = toc.querySelector('.is-active');
+      if (!active) return;
+      const box = toc.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      if (item.top < box.top) toc.scrollTop -= box.top - item.top + 24;
+      else if (item.bottom > box.bottom) toc.scrollTop += item.bottom - box.bottom + 24;
+    });
+  }, { passive: true });
 }
 
 function init() {
   loadYear();
+  initToc();
   const select = $('catalog-select');
   select.replaceChildren(...CATALOGS.map(c => {
     const opt = document.createElement('option');

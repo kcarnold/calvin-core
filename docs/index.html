@@ -198,6 +198,47 @@
     footer { border-top: 1px solid var(--line); padding: 20px 0 40px; font-size: 13px; color: var(--muted); }
     footer p { margin: 4px 0; }
 
+    /* Contents: a sticky sidebar beside the content on wide screens; a panel
+       opened from a floating button otherwise. */
+    .toc-title { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .toc-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+    .toc-link { display: flex; align-items: baseline; gap: 6px; padding: 3px 8px; border-left: 3px solid transparent; border-radius: 0 6px 6px 0; color: var(--ink); text-decoration: none; line-height: 1.3; }
+    .toc-link:hover { background: var(--surface-2); }
+    .toc-link.is-active { border-left-color: var(--accent); background: var(--surface-2); font-weight: 600; }
+    .toc-label { flex: 1 1 auto; }
+    .toc-section { margin-top: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .toc-list > li:first-child .toc-section { margin-top: 0; }
+    .toc-req { padding-left: 14px; }
+    .toc-tag { padding-left: 24px; font-style: italic; }
+    .toc-status { flex: none; width: 1.1em; text-align: center; font-weight: 700; font-style: normal; }
+    .toc-link.status-min .toc-status { font-size: 1.25em; line-height: 1; }
+    .toc-link.status-done .toc-status { color: var(--done); }
+    .toc-link.status-min .toc-status { color: var(--min); }
+    .toc-link.status-todo .toc-status { color: var(--todo); }
+    .toc-link.status-optional .toc-status { color: var(--muted); }
+    .toc-toggle { display: none; }
+
+    @media (min-width: 1200px) {
+      .wrap { max-width: 1220px; }
+      .layout { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 24px; }
+      .toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 20px 0 24px; }
+    }
+    @media (max-width: 1199.98px) {
+      .toc-toggle {
+        display: block; position: fixed; right: 16px; bottom: 16px; z-index: 20;
+        font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+        color: var(--accent-ink); background: var(--accent); border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      }
+      .toc {
+        display: none; position: fixed; right: 16px; bottom: 64px; z-index: 20;
+        width: min(300px, calc(100vw - 32px)); max-height: calc(100vh - 96px); overflow-y: auto;
+        padding: 12px 8px 12px 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+      }
+      .toc.is-open { display: block; }
+      .toc-title { padding-left: 11px; }
+    }
+
     @media (max-width: 560px) {
       .course-code { min-width: 0; }
       .plan-toggle { margin-left: 0; }
@@ -217,7 +258,8 @@
     </div>
   </header>
 
-  <div class="wrap">
+  <div class="wrap layout">
+   <div class="layout-main">
     <div class="notice">
       <p><strong>Workday is the official record.</strong> Your Academic Progress page in Workday is the system of record for your core requirements. This page is a planning aid: if it disagrees with Workday, go with Workday and ask your advisor or the Registrar.</p>
       <p>Requirements here are copied from the <a data-catalog-link href="#" target="_blank" rel="noopener"><span data-catalog-year></span> Calvin catalog</a> as saved on <span data-catalog-saved></span>. Use the catalog for the year you entered Calvin. Each sentence of catalog wording is marked as checked or not checked by this tool.</p>
@@ -245,7 +287,10 @@
     </section>
 
     <main id="results"></main>
+   </div>
+    <nav id="toc" class="toc" aria-label="Contents"></nav>
   </div>
+  <button type="button" class="toc-toggle" id="toc-toggle" aria-controls="toc" aria-expanded="false">Contents</button>
 
   <footer>
     <div class="wrap">

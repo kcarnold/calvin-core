@@ -48,11 +48,12 @@ function officialBlocks(catoid) {
   });
 }
 
-function render(catalog, transcript) {
-  const doc = new JSDOM('<!doctype html><main id="results"></main>').window.document;
+function render(catalog, transcript, withToc = false) {
+  const doc = new JSDOM('<!doctype html><main id="results"></main><nav id="toc"></nav>').window.document;
   const root = doc.getElementById('results');
   const analysis = transcript && analyze(catalog.categories, transcript, { extraCourses: KNOWN_COURSE_CATEGORIES });
-  renderApp(root, { catalog, catalogs: CATALOGS, analysis, onTogglePlanned: () => {} });
+  renderApp(root, { catalog, catalogs: CATALOGS, analysis, onTogglePlanned: () => {},
+    tocRoot: withToc ? doc.getElementById('toc') : null });
   return root;
 }
 
@@ -135,6 +136,23 @@ describe('app fidelity to the official catalog', () => {
     assert.ok(root.querySelector('.course.is-excluded'), 'excluded transfer shown');
     assert.match(root.querySelector('.callout-warn').textContent, /CORE 100 is transfer credit/);
   });
+
+  for (const catalog of CATALOGS) {
+    it(`${catalog._meta.catoid}: contents link every requirement, with the card's status`, () => {
+      const root = render(catalog, SAMPLE_TRANSCRIPT, true);
+      const toc = root.ownerDocument.getElementById('toc');
+      const links = Array.from(toc.querySelectorAll('.toc-link'));
+      const targets = Array.from(root.querySelectorAll('[data-core-index]'));
+      assert.deepEqual(links.map(a => a.getAttribute('href')), targets.map(el => '#' + el.id));
+      for (const [i, el] of targets.entries()) {
+        if (!el.classList.contains('req')) continue;
+        const pill = el.querySelector('.status-pill');
+        const statusCls = pill && [...pill.classList].find(c => c.startsWith('status-') && c !== 'status-pill');
+        assert.equal([...links[i].classList].find(c => c.startsWith('status-')), statusCls, el.id);
+        assert.equal(links[i].querySelector('.toc-status')?.getAttribute('aria-label'), pill?.textContent, el.id);
+      }
+    });
+  }
 });
 
 describe('app page', () => {

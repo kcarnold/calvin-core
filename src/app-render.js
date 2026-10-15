@@ -54,6 +54,17 @@ function statusInfo(r) {
   }
 }
 
+// A requirement card's status, including "Complete at least one tagged course
+// in all three areas" (no course list of its own), shown as "N of 3 tags".
+function requirementStatus(cat, r, analysis) {
+  if (analysis && classifyInstructions(cat.instructions).some(s => s.rule?.id === 'three-tags')) {
+    const tags = analysis.results.filter(t => t.type === 'tag' && t.section === cat.section);
+    const done = tags.filter(t => t.status === 'complete').length;
+    return { cls: done === tags.length ? 'done' : 'todo', text: `${done} of ${tags.length} tags` };
+  }
+  return statusInfo(r);
+}
+
 // K&U as a whole: enough hours, enough categories, and each category's minimum.
 export function kuStatus(analysis) {
   const ku = analysis.kuSummary;
@@ -196,16 +207,10 @@ export function renderApp(root, state) {
 
   function requirementCard(cat) {
     const r = resultsByIndex.get(cat.coreIndex);
-    let status = statusInfo(r);
+    const status = requirementStatus(cat, r, analysis);
     const notes = [];
     if (cat.alternatives) {
       notes.push('Read as: ' + cat.alternatives.map(alt => alt.join(' and ')).join(', or ') + '.');
-    }
-    // "Complete at least one tagged course in all three areas" (no course list of its own).
-    if (classifyInstructions(cat.instructions).some(s => s.rule?.id === 'three-tags') && analysis) {
-      const tags = analysis.results.filter(t => t.type === 'tag' && t.section === cat.section);
-      const done = tags.filter(t => t.status === 'complete').length;
-      status = { cls: done === tags.length ? 'done' : 'todo', text: `${done} of ${tags.length} tags` };
     }
     const hasCourses = cat.courses?.length > 0;
     const defaultOpen = analysis ? (r?.status !== 'complete' && !r?.isExempt) : cat.courses?.length <= 12;
@@ -352,4 +357,34 @@ export function renderApp(root, state) {
   }
   body.push(transcriptTable());
   root.replaceChildren(...body.filter(Boolean));
+  if (state.tocRoot) renderToc(state.tocRoot, state);
+}
+
+const TOC_ICONS = { done: '✓', min: '◔', todo: '○', optional: '○' };
+
+// Contents sidebar: every section and requirement, with its status at a glance.
+// Links go to the ids renderApp gives sections and cards.
+export function renderToc(root, state) {
+  const h = builder(root.ownerDocument);
+  const { catalog, analysis } = state;
+  const resultsByIndex = new Map((analysis?.results || []).map(r => [r.coreIndex, r]));
+  const ku = analysis && kuStatus(analysis);
+  function tocLink(cat, label, cls, status) {
+    return h('li', {}, h('a', { href: '#' + cat.slug, class: 'toc-link ' + cls + (status ? ' status-' + status.cls : ''),
+      dataset: { slug: cat.slug }, title: status ? `${label}: ${status.text}` : null },
+      h('span', { class: 'toc-label' }, label),
+      status ? h('span', { class: 'toc-status', 'aria-label': status.text }, TOC_ICONS[status.cls] || '') : null));
+  }
+  const items = catalog.categories.map(cat => {
+    if (cat.type !== 'section-header') {
+      return tocLink(cat, cat.name, cat.type === 'tag' ? 'toc-tag' : 'toc-req',
+        requirementStatus(cat, resultsByIndex.get(cat.coreIndex), analysis));
+    }
+    // K&U's section status is the aggregate (hours and categories).
+    const isKu = catalog.categories.some(c => c.section === cat.section && KU_NAMES.includes(c.name));
+    const status = isKu && ku ? { cls: ku.met ? 'done' : 'todo',
+      text: `${fmtHours(ku.totalHours)} of ${ku.requiredHours} hrs, ${ku.categoriesUsed} of ${ku.requiredCategories} categories` } : null;
+    return tocLink(cat, cat.section, 'toc-section', status);
+  });
+  root.replaceChildren(h('h2', { class: 'toc-title' }, 'Contents'), h('ol', { class: 'toc-list' }, items));
 }

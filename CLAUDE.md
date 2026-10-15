@@ -28,7 +28,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `src/core.js` — Pure logic: `parseTranscript`, `parseProgress`, `parseProgressRows`, `parseCoreProgram(root)`, `INSTRUCTION_RULES`/`classifyInstructions`, `analyze`, `KU_NAMES`. No DOM globals; `parseCoreProgram` takes a root element (document or jsdom).
 - `src/xlsx.js` — `readXlsxRows(data, { DOMParser })`: first worksheet's cells as rows of strings (fflate unzip + DOMParser; inline and shared strings).
 - `src/app.js` — Standalone app entry: state, paste and .xlsx file handling, catalog picker. Imports `catalog/*.json`.
-- `src/app-render.js` — `renderApp(root, state)`: builds the app page from catalog JSON + optional analysis. Uses `root.ownerDocument`, so tests render it in jsdom.
+- `src/app-render.js` — `renderApp(root, state)`: builds the app page from catalog JSON + optional analysis. Uses `root.ownerDocument`, so tests render it in jsdom. With `state.tocRoot`, also `renderToc`: the Contents sidebar (every section/requirement with the card's status icon; K&U section shows the aggregate). Sticky beside the content at ≥1200px, a floating "Contents" panel below; `app.js` highlights the entry in view.
 - `src/render.js` — Catalog-page rendering: injects styles, badges, TOC, annotations. Browser-only.
 - `src/catalog-courses.js` — Generated: `KNOWN_COURSE_CATEGORIES`, union of course lists across `catalog-categories-*.json`. Don't edit by hand.
 - `src/ui.js` — Launcher panel, paste and .xlsx file handlers, `main()` entry. Browser-only.
