@@ -1,7 +1,9 @@
 // Standalone app entry (docs/index.html). Everything runs in the browser:
-// pasted Workday text is parsed here and never sent anywhere.
+// pasted Workday text and chosen .xlsx exports are parsed here and never sent
+// anywhere.
 
-import { parseTranscript, parseProgress, detectInputFormat, analyze } from './core.js';
+import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, analyze } from './core.js';
+import { readXlsxRows } from './xlsx.js';
 import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
 import { renderApp, catalogLabel } from './app-render.js';
 import catalog25 from '../catalog/catalog-categories-25.json';
@@ -14,6 +16,9 @@ const YEAR_KEY = 'calvin-core:catalog';
 const state = {
   catoid: CATALOGS[0]._meta.catoid,
   text: '',
+  // Parsed .xlsx export: { name, format, courses, overrides } or { name, error }.
+  // Replaces the pasted text while set.
+  file: null,
   plannedCourses: new Set(),
   openLists: new Map(),
 };
@@ -46,6 +51,22 @@ function parseInput(text) {
   return { format, courses: parseTranscript(text), overrides: undefined };
 }
 
+async function readExport(file) {
+  try {
+    const rows = readXlsxRows(await file.arrayBuffer());
+    const { courses, overrides } = parseProgressRows(rows);
+    return { name: file.name, format: 'progress-xlsx', courses, overrides };
+  } catch (err) {
+    return { name: file.name, error: err.message };
+  }
+}
+
+const SOURCE_LABELS = {
+  progress: 'Academic Progress',
+  transcript: 'Academic History',
+  'progress-xlsx': 'Academic Progress export',
+};
+
 function update() {
   const catalog = CATALOGS.find(c => c._meta.catoid === state.catoid);
   const meta = catalog._meta;
@@ -55,18 +76,23 @@ function update() {
 
   let analysis = null;
   const text = state.text.trim();
-  if (text) {
-    const { format, courses, overrides } = parseInput(text);
+  const input = state.file ?? (text ? parseInput(text) : null);
+  if (input?.error) {
+    setStatus(`Couldn’t read ${input.name}: ${input.error}. Choose the .xlsx file Workday exports from Academic Progress.`, 'error');
+  } else if (input) {
+    const { format, courses, overrides } = input;
     if (courses.length === 0) {
-      setStatus('No courses found. Copy the whole Academic History or Academic Progress page from Workday and paste again.', 'error');
+      setStatus(state.file
+        ? `No courses found in ${state.file.name}. Choose the .xlsx file Workday exports from Academic Progress.`
+        : 'No courses found. Copy the whole Academic History or Academic Progress page from Workday and paste again.', 'error');
     } else {
       analysis = analyze(catalog.categories, courses, {
         plannedCourses: Array.from(state.plannedCourses), overrides, extraCourses: KNOWN_COURSE_CATEGORIES,
       });
       state.plannedCourses = new Set(analysis.plannedCourses);
       const n = courses.filter(c => c.code).length;
-      const source = format === 'progress' ? 'Academic Progress' : 'Academic History';
-      setStatus(`Read ${n} course${n === 1 ? '' : 's'} from ${source}.`
+      setStatus(`Read ${n} course${n === 1 ? '' : 's'} from ${SOURCE_LABELS[format]}`
+        + (state.file ? ` (${state.file.name}).` : '.')
         + (analysis.kuWarnings.length ? ` ${analysis.kuWarnings.length} need checking (see below).` : ''), 'ok');
     }
   } else {
@@ -102,13 +128,46 @@ function init() {
   });
 
   const input = $('workday-input');
+  const fileInput = $('workday-file');
   input.addEventListener('input', () => {
     state.text = input.value;
+    state.file = null;
+    fileInput.value = '';
     update();
   });
+
+  async function loadFile(file) {
+    if (!file) return;
+    input.value = '';
+    state.text = '';
+    state.plannedCourses.clear();
+    setStatus(`Reading ${file.name}…`, null);
+    state.file = await readExport(file);
+    update();
+  }
+  fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
+  // Dropping a file anywhere on the input card reads it instead of opening it.
+  const card = $('input-card');
+  card.addEventListener('dragover', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    card.classList.add('dragging');
+  });
+  card.addEventListener('dragleave', e => {
+    if (!card.contains(e.relatedTarget)) card.classList.remove('dragging');
+  });
+  card.addEventListener('drop', e => {
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    card.classList.remove('dragging');
+    loadFile(e.dataTransfer.files[0]);
+  });
+
   $('clear-button').addEventListener('click', () => {
     input.value = '';
     state.text = '';
+    state.file = null;
+    fileInput.value = '';
     state.plannedCourses.clear();
     state.openLists.clear();
     update();

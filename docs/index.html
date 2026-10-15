@@ -77,7 +77,8 @@
 
     .input-card { margin: 16px 0 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
     .input-card h2 { margin: 0 0 6px; font-size: 17px; }
-    .input-card ol { margin: 0 0 12px; padding-left: 20px; color: var(--muted); }
+    .input-card ol { margin: 0 0 8px; padding-left: 20px; color: var(--muted); }
+    .input-card .alt-input { margin: 0 0 12px; color: var(--muted); }
     textarea {
       width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px;
       font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--ink);
@@ -85,6 +86,10 @@
     }
     textarea:focus, select:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .input-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+    .input-card.dragging { border-color: var(--accent); outline: 2px dashed var(--accent); outline-offset: -6px; }
+    .file-button { position: relative; }
+    .file-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+    .file-button:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
     .button { font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; }
     .status { font-size: 14px; color: var(--muted); }
     .status-ok { color: var(--done); }
@@ -214,19 +219,23 @@
       <p>Requirements here are copied from the <a data-catalog-link href="#" target="_blank" rel="noopener"><span data-catalog-year></span> Calvin catalog</a> as saved on <span data-catalog-saved></span>. Use the catalog for the year you entered Calvin. Each sentence of catalog wording is marked as checked or not checked by this tool.</p>
     </div>
 
-    <section class="input-card" aria-labelledby="input-heading">
-      <h2 id="input-heading">Paste your courses from Workday</h2>
+    <section class="input-card" id="input-card" aria-labelledby="input-heading">
+      <h2 id="input-heading">Add your courses from Workday</h2>
       <ol>
         <li>In Workday, open Academic Record, then Academic Progress (or Academic History).</li>
         <li>If a table has several pages, set it to show all rows.</li>
         <li>Select all (Ctrl/⌘-A), copy, and paste below.</li>
       </ol>
+      <p class="alt-input">Or export Academic Progress to Excel from Workday and choose or drop the .xlsx file here.</p>
       <textarea id="workday-input" spellcheck="false" placeholder="Paste Workday Academic Progress or Academic History here"></textarea>
       <div class="input-actions">
+        <label class="button file-button">Choose Workday export (.xlsx)
+          <input type="file" id="workday-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        </label>
         <button type="button" class="button" id="clear-button">Clear</button>
         <span id="status" class="status" role="status" aria-live="polite"></span>
       </div>
-      <p class="privacy">Everything runs in your browser. What you paste isn’t uploaded or saved anywhere, and is gone when you close or reload this page.</p>
+      <p class="privacy">Everything runs in your browser. What you paste or choose isn’t uploaded or saved anywhere, and is gone when you close or reload this page.</p>
     </section>
 
     <main id="results"></main>
