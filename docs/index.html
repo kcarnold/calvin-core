@@ -81,7 +81,6 @@
 
     .input-card { margin: 16px 0 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
     .input-card h2 { margin: 0 0 6px; font-size: 17px; }
-    .input-card ol { margin: 0 0 8px; padding-left: 20px; color: var(--muted); }
     textarea {
       width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px;
       font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--ink);
@@ -90,12 +89,17 @@
     textarea:focus, select:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .input-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
     .drop-zone {
-      display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
-      margin-top: 10px; padding: 16px; text-align: center; color: var(--muted);
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      margin-top: 10px; padding: 14px 16px; color: var(--muted);
       border: 2px dashed var(--line); border-radius: 8px; transition: border-color 0.1s, background 0.1s;
     }
-    .drop-text { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .export-hint { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+    .drop-text { flex: 1 1 260px; }
+    .drop-text p { margin: 0; }
+    .drop-title { color: var(--ink); font-weight: 600; }
+    .export-hint { margin-top: 2px; font-size: 13px; }
+    .paste-route { margin-top: 10px; color: var(--muted); font-size: 14px; }
+    .paste-route summary { cursor: pointer; width: fit-content; }
+    .paste-route ol { margin: 8px 0; padding-left: 20px; }
     /* Screenshot of Workday's export buttons; the ring pulses over Excel (the left one). */
     .workday-buttons { position: relative; display: inline-block; line-height: 0; padding: 2px 6px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
     .workday-buttons img { display: block; }
@@ -307,25 +311,27 @@
     <section class="input-card" id="input-card" aria-labelledby="input-heading">
       <h2 id="input-heading">Add your courses from Workday</h2>
       <div class="drop-zone" id="drop-zone">
+        <span class="workday-buttons" role="img" aria-label="Workday’s buttons: Excel (circled), PDF, bookmark">
+          <img src="./workday-export-buttons.png" width="132" height="50" alt="">
+          <span class="export-ring" aria-hidden="true"></span>
+        </span>
         <div class="drop-text">
-          <span>Drop your Academic Progress export (.xlsx) from Workday here</span>
-          <span class="export-hint">To export, click the Excel button on the <i>very top</i> of Workday’s Academic Progress page (if you're an advisor, use &ldquo;View Academic Progress for Student&rdquo;):
-            <span class="workday-buttons" role="img" aria-label="Workday’s buttons: Excel (circled), PDF, bookmark">
-              <img src="./workday-export-buttons.png" width="132" height="50" alt="">
-              <span class="export-ring" aria-hidden="true"></span>
-            </span>
-          </span>
+          <p class="drop-title">Drop your Academic Progress export (.xlsx) here</p>
+          <p class="export-hint">On Workday’s Academic Progress page, click the Excel button at the very top right, next to PDF (not the ones above each table). Advisors: use “View Academic Progress for Student” first.</p>
         </div>
         <label class="button file-button">Choose file…
           <input type="file" id="workday-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
         </label>
+      </div>
+      <details class="paste-route">
+        <summary>Or copy and paste from Workday instead</summary>
         <ol>
-          <li>Or the copy-paste route: In Workday, open Academic Record, then Academic Progress.</li>
+          <li>In Workday, open Academic Record, then Academic Progress.</li>
           <li>If a table has several pages, set it to show all rows.</li>
           <li>Select all (Ctrl/⌘-A), copy, and paste below.</li>
         </ol>
         <textarea id="workday-input" spellcheck="false" placeholder="Paste Workday Academic Progress here"></textarea>
-      </div>
+      </details>
       <div class="input-actions">
         <button type="button" class="button" id="clear-button">Clear</button>
         <span id="status" class="status" role="status" aria-live="polite"></span>
