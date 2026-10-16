@@ -27,6 +27,8 @@ const SECTIONS = [
     about: 'Courses with no credit (F, W, ...), repeated courses, and how the tool compares its verdict with the Status Workday shows for each requirement.' },
   { file: 'test/test-opportunities.js', title: '“Minimum met” means more hours can still count',
     about: 'Whenever the tool says a K&U category’s minimum is met but more hours could count, these cases add a course there and confirm the count goes up.' },
+  { file: 'test/test-advising-cases.js', title: 'Advising cases',
+    about: 'Real students’ records, de-identified (grades reduced to A, D, or F; years shifted to start at 2000), copied from the Core Planner while advising. A case marked as a known bug is one where the tool is currently wrong.' },
   { file: 'test/test-xlsx.js', title: 'Reading Workday’s Excel export',
     about: 'Courses read from Academic Progress exports, including a real, anonymized one.' },
 ];
@@ -43,20 +45,25 @@ if (run.status !== 0) {
   console.error('Tests failed; docs/test-cases.html not written.');
   process.exit(1);
 }
+// Advising cases the tool currently gets wrong, by test name.
+const CASES = new URL('./fixtures/cases/', import.meta.url);
+const knownBugs = new Map(readdirSync(CASES).filter(f => f.endsWith('.json'))
+  .map(f => JSON.parse(readFileSync(new URL(f, CASES), 'utf-8')))
+  .filter(c => c.toolIsWrong).map(c => [c.about, c.toolIsWrong]));
 const records = readdirSync(dir).flatMap(f => JSON.parse(readFileSync(join(dir, f), 'utf-8')));
 rmSync(dir, { recursive: true, force: true });
 
 // ---- Plain-language pieces ----
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const hrs = n => String(+Number(n).toFixed(2));
-const NO_CREDIT = new Set(['F', 'W', 'WF', 'WP', 'I', 'NC', 'AU']);
+import { isNonPassingGrade } from '../src/core.js';
 
 function courseText(c) {
   if (c.status === 'exemption') return `<b>${esc(c.title)}</b> (exemption for ${esc(c.exemptionTarget)})`;
   const notes = [];
   if (c.status === 'in-progress') notes.push('in progress');
   if (c.status === 'transfer') notes.push('transfer credit');
-  if (c.grade && c.status !== 'in-progress') notes.push(NO_CREDIT.has(c.grade) ? `<span class="bad">grade ${esc(c.grade)}</span>` : 'grade ' + esc(c.grade));
+  if (c.grade && c.status !== 'in-progress') notes.push(isNonPassingGrade(c.grade) ? `<span class="bad">grade ${esc(c.grade)}</span>` : 'grade ' + esc(c.grade));
   if (c.period) notes.push(esc(c.period));
   const title = c.title && c.title !== c.code ? ' ' + esc(c.title) : '';
   const listed = c.requirements?.length ? ` <span class="muted">· Workday lists it under ${c.requirements.map(esc).join('; ')}</span>` : '';
@@ -170,7 +177,8 @@ const sectionsHtml = SECTIONS.map((section, si) => {
     const steps = calls.map((rec, i) => `<div class="step"><div class="in">${inputHtml(rec, calls[i - 1])}</div>`
       + `<div class="out">${outcomeHtml(rec)}</div></div>`).join('');
     const catalogs = [...new Set(calls.map(c => c.catalog))].join(', ');
-    out.push(`<article class="case"><h4>${esc(title)}</h4><p class="meta">${esc(catalogs)} catalog · <code>${esc(calls[0].at.file)}:${calls[0].at.line}</code></p>${steps}</article>`);
+    const bug = knownBugs.get(title) ? `<p class="flag"><b>Known bug:</b> ${esc(knownBugs.get(title))}</p>` : '';
+    out.push(`<article class="case"><h4>${esc(title)}</h4>${bug}<p class="meta">${esc(catalogs)} catalog · <code>${esc(calls[0].at.file)}:${calls[0].at.line}</code></p>${steps}</article>`);
   }
   return `<section id="s${si + 1}"><h2>${esc(section.title)}</h2><p class="about">${esc(section.about)}</p>${out.join('\n')}</section>`;
 }).join('\n');

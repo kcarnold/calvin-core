@@ -18,13 +18,14 @@ import { analyze } from './recorder.js';
 import { readXlsxRows } from '../src/xlsx.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { renderApp, bugReport } from '../src/app-render.js';
+import { buildTestCase, formatTestCase, coarseGrade, expectedFrom } from '../src/test-case.js';
 import { loadCategories, makeCourse, getResult } from './helpers.js';
 
 const categories = loadCategories();
 const run = (courses, opts = {}) => analyze(categories, courses, { extraCourses: KNOWN_COURSE_CATEGORIES, ...opts });
 
 describe('grades that earn no credit', () => {
-  for (const grade of ['F', 'W', 'WF', 'I', 'NC', 'AU']) {
+  for (const grade of ['F', 'I', 'W', 'N', 'NR', 'IF']) {
     it(`grade ${grade}: REL 121 doesn't complete Foundations of Christianity I or add hours`, () => {
       const a = run([makeCourse('REL 121', 4, { grade }), makeCourse('HIST 152', 4, { grade })]);
       assert.equal(getResult(a, 'Foundations of Christianity I').status, 'incomplete');
@@ -32,7 +33,7 @@ describe('grades that earn no credit', () => {
       assert.deepEqual(a.notCounted.map(c => c.code), ['REL 121', 'HIST 152']);
     });
   }
-  for (const grade of ['IA', 'IB', 'CR', 'D-']) {
+  for (const grade of ['IA-', 'IB', 'CR', 'D-']) {
     it(`grade ${grade} counts`, () => {
       const a = run([makeCourse('REL 121', 4, { grade })]);
       assert.equal(getResult(a, 'Foundations of Christianity I').status, 'complete');
@@ -174,5 +175,55 @@ describe('the app shows Workday checks', () => {
     const doc = render(run([makeCourse('REL 121', 4, { grade: 'W' })]));
     assert.match(doc.querySelector('.callout-warn').textContent, /REL 121.*grade W/);
     assert.match(doc.querySelector('.transcript').textContent, /not counted \(grade W\)/);
+  });
+});
+
+describe('de-identified test cases (src/test-case.js)', () => {
+  const input = {
+    catoid: '25', source: 'Academic Progress export',
+    courses: [
+      { code: 'REL 121', title: 'Biblical Literature', grade: 'B+', hours: 4, status: 'completed', period: '2023 Fall',
+        requirements: ['Foundations of Christianity I Core', 'Computer Science Major'] },
+      { code: 'HIST 152', title: 'United States History', grade: 'IC-', hours: 4, status: 'completed', period: '2024 Spring', requirements: [] },
+      { code: 'PER 101', title: 'Jogging', grade: 'D+', hours: 1, status: 'completed', period: '2024 Fall', requirements: [] },
+      { code: 'ENGL 101', title: 'Written Rhetoric', grade: 'W', hours: 4, status: 'completed', period: '2024 Fall', requirements: [] },
+    ],
+    workdayStatus: new Map([
+      ['Health & Movement - Recreation, Sport & Skill Core', { status: 'Satisfied', items: ['Military - 05/14/2025'] }],
+      ['Computer Science Major', { status: 'In Progress', items: ['CS 108 - Introduction to Computing'] }],
+    ]),
+  };
+  const tc = buildTestCase(input, categories, KNOWN_COURSE_CATEGORIES);
+  it('grades become A, D, or F; I, W, N, NR stay', () => {
+    assert.deepEqual(['A', 'A-', 'B+', 'C-', 'D+', 'D-', 'F', 'IB+', 'ID', 'IF', 'I', 'W', 'N', 'NR', 'CR'].map(coarseGrade),
+      ['A', 'A', 'A', 'A', 'D', 'D', 'F', 'IA', 'ID', 'IF', 'I', 'W', 'N', 'NR', 'CR']);
+    assert.deepEqual(tc.courses.map(c => c.grade), ['A', 'IA', 'D', 'W']);
+  });
+  it('years shift so the earliest is 2000, keeping order; dates likewise', () => {
+    assert.deepEqual(tc.courses.map(c => c.period), ['2000 Fall', '2001 Spring', '2001 Fall', '2001 Fall']);
+    assert.deepEqual(tc.workdayStatus, [['Health & Movement - Recreation, Sport & Skill Core', { status: 'Satisfied', items: ['Military - 01/01/2002'] }]]);
+  });
+  it('requirements outside the core are dropped', () => {
+    assert.deepEqual(tc.courses[0].requirements, ['Foundations of Christianity I Core']);
+    assert.ok(!formatTestCase(tc).includes('Computer Science'));
+  });
+  it('expected is the tool\'s result, and replaying the case reproduces it', () => {
+    assert.equal(tc.expected['Foundations of Christianity I'], 'complete');
+    assert.equal(tc.expected['Foundational Writing'], 'incomplete');
+    assert.equal(tc.expected['Health and Movement (Leisure, Sport, and Skills)'], 'complete');
+    const replay = JSON.parse(formatTestCase(tc));
+    const a = run(replay.courses, { workdayStatus: new Map(replay.workdayStatus) });
+    assert.deepEqual(expectedFrom(a), replay.expected);
+  });
+  it('the page has it, collapsed, and the bug report carries it instead of real grades', () => {
+    const doc = new JSDOM('<main></main>').window.document;
+    const catalog = JSON.parse(fs.readFileSync(new URL('../catalog/catalog-categories-25.json', import.meta.url), 'utf-8'));
+    const a = run(input.courses, { workdayStatus: ws([['Competencies & Skills: Foundational Writing Core', 'Satisfied', ['ENGL 101 - Written Rhetoric']]]) });
+    renderApp(doc.querySelector('main'), { catalog, analysis: a, testCase: formatTestCase(tc) });
+    const section = doc.querySelector('details.test-case');
+    assert.ok(section && !section.open);
+    assert.equal(section.querySelector('textarea').value, formatTestCase(tc));
+    const report = doc.querySelector('#workday-mismatches textarea').value;
+    assert.ok(report.includes('Test case (de-identified):') && !report.includes('B+'), report);
   });
 });

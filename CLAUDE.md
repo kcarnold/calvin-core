@@ -29,6 +29,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `src/xlsx.js` — `readXlsxRows(data, { DOMParser })`: first worksheet's cells as rows of strings (fflate unzip + DOMParser; inline and shared strings).
 - `src/app.js` — Standalone app entry: state, paste and .xlsx file handling, catalog picker. Imports `catalog/*.json`.
 - `src/app-render.js` — `renderApp(root, state)`: builds the app page from catalog JSON + optional analysis. Uses `root.ownerDocument`, so tests render it in jsdom. With `state.tocRoot`, also `renderToc`: the Contents sidebar (every section/requirement with the card's status icon; K&U section shows the aggregate). Sticky beside the content at ≥1200px, a floating "Contents" panel below; `app.js` highlights the entry in view.
+- `src/test-case.js` — `buildTestCase`/`formatTestCase`: the current record as a de-identified test case (grades → A/D/F keeping I, W, N, NR, CR; years shifted to start at 2000; non-core Workday requirements dropped), shown collapsed at the bottom of the app and used in bug reports. `expected` = the tool's result; advisors correct it and set `toolIsWrong` when the tool is wrong.
 - `src/render.js` — Catalog-page rendering: injects styles, badges, TOC, annotations. Browser-only.
 - `src/catalog-courses.js` — Generated: `KNOWN_COURSE_CATEGORIES`, union of course lists across `catalog-categories-*.json`. Don't edit by hand.
 - `src/ui.js` — Launcher panel, paste and .xlsx file handlers, `main()` entry. Browser-only.
@@ -38,6 +39,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
 - `test/test-xlsx.js` — `readXlsxRows` + `parseProgressRows` on `test/fixtures/academic-progress-sample.xlsx` (scrubbed via `test/scrub-progress-xlsx.py`) and generated workbooks.
 - `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
+- `test/test-advising-cases.js` — replays `test/fixtures/cases/*.json` (copied from the app while advising); `toolIsWrong` cases run as todo.
 - `test/recorder.js` — `analyze()` for the logic tests; with `CORE_TEST_REPORT=<dir>` it records each call (test name, inputs, outcome). Logic test files import `analyze` from here, not core.js.
 - `test/build-test-report.js` — runs the logic tests recording, writes `docs/test-cases.html` (every case in plain language, for the registrar; deployed with the site). Part of `npm run build`; also `npm run test-report`.
 - `test/test-workday-status.js` — Non-passing grades, repeats, Workday Status checks (accepted/mismatch), the sample export agreeing with Workday, and their rendering.
@@ -107,7 +109,7 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 
 ## Grades and repeats
 
-- `NON_PASSING_GRADES` (F, W, WF, WP, I, NC, AU) count toward nothing (`analysis.notCounted`, listed in the warning box and the course table). Resolved incompletes (IA, IB, ...) and CR count.
+- `NON_PASSING_GRADES` (catalog: F, I, W, N, NR) count toward nothing (`analysis.notCounted`, listed in the warning box and the course table). A completed incomplete is "I" + its grade (`IA-`) and counts as that grade (so `IF` doesn't). Transfer CR counts.
 - A repeated course's later attempt wins: by academic period in Academic Progress, else the later listing.
 
 ## Academic History

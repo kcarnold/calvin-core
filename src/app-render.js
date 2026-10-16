@@ -4,6 +4,7 @@
 // verbatim; test/test-app-fidelity.js compares it against the saved catalog HTML.
 
 import { classifyInstructions, doubleCountConfirmed, KU_NAMES } from './core.js';
+import { coarseGrade } from './test-case.js';
 
 const CATALOG_ORIGIN = 'https://catalog.calvin.edu';
 
@@ -78,12 +79,13 @@ const OUR_STATUS_TEXT = { complete: 'Complete', satisfied: 'Minimum met', incomp
   'optional-available': 'Optional', exempt: 'Exempt', met: 'Met', 'not met': 'Not met' };
 
 // Plain text a student can copy to the developer when Workday and this tool
-// disagree. Course list included (no name or ID) so the case can be reproduced.
-// context: { catalog: _meta, source: input label }
+// disagree. Ends with the de-identified test case (src/test-case.js) when
+// given, else the course list with grades coarsened the same way; no name or ID.
+// context: { catalog: _meta, source: input label, testCase: formatted case }
 export function bugReport(analysis, check, context = {}) {
   const fmtCourse = c => [c.code || c.title, c.title && c.code ? '- ' + c.title : null,
     c.status && c.status !== 'completed' ? `(${c.status})` : null, c.period || null,
-    c.grade ? 'grade ' + c.grade : null, `${fmtHours(c.hours)} hrs`].filter(Boolean).join(' ');
+    c.grade ? 'grade ' + coarseGrade(c.grade) : null, `${fmtHours(c.hours)} hrs`].filter(Boolean).join(' ');
   const counted = check.requirement === 'K&U'
     ? analysis.results.filter(r => KU_NAMES.includes(r.name))
     : analysis.results.filter(r => r.name === check.requirement);
@@ -104,8 +106,8 @@ export function bugReport(analysis, check, context = {}) {
     ...(countedLines.length ? countedLines : ['  (nothing)']),
     check.requirement === 'K&U' && analysis.kuSummary
       ? `K&U: ${fmtHours(analysis.kuSummary.totalHours)} of ${analysis.kuSummary.requiredHours} hrs, ${analysis.kuSummary.categoriesUsed} of ${analysis.kuSummary.requiredCategories} categories` : null,
-    `All courses (${analysis.transcript.length}):`,
-    ...analysis.transcript.map(c => '  ' + fmtCourse(c)),
+    ...(context.testCase ? ['Test case (de-identified):', context.testCase]
+      : [`All courses (${analysis.transcript.length}):`, ...analysis.transcript.map(c => '  ' + fmtCourse(c))]),
   ];
   return lines.filter(l => l != null).join('\n');
 }
@@ -116,12 +118,13 @@ export function bugReport(analysis, check, context = {}) {
 //   analysis: analyze() result or null
 //   openLists: Map slug → bool          remembered <details> state
 //   format, source                      input format ('transcript', ...) and its label, for notices and bug reports
+//   testCase                            de-identified test case text (src/test-case.js), shown at the bottom
 //   onTogglePlanned(code), onListToggle(slug, open)
 // }
 export function renderApp(root, state) {
   const doc = root.ownerDocument;
   const h = builder(doc);
-  const { catalog, catalogs = [catalog], analysis, openLists = new Map(), source } = state;
+  const { catalog, catalogs = [catalog], analysis, openLists = new Map(), source, testCase } = state;
   const mismatchesFor = name => (analysis?.workdayChecks || []).filter(c => c.kind === 'mismatch' && c.requirement === name);
   const meta = catalog._meta;
   const resultsByIndex = new Map((analysis?.results || []).map(r => [r.coreIndex, r]));
@@ -395,7 +398,7 @@ export function renderApp(root, state) {
       h('h2', {}, list.length === 1 ? 'Workday disagrees with this tool' : `Workday disagrees with this tool on ${list.length} requirements`),
       h('p', {}, 'Go with Workday. This is probably a bug in this tool: please copy the report below and send it to the developer. It lists your courses but not your name or ID.'),
       list.map(m => {
-        const report = bugReport(analysis, m, { catalog: meta, source });
+        const report = bugReport(analysis, m, { catalog: meta, source, testCase });
         const area = h('textarea', { readonly: true, rows: 10, 'aria-label': 'Bug report for ' + m.requirement }, report);
         const copy = h('button', { type: 'button', class: 'button', onclick: async e => {
           try { await doc.defaultView.navigator.clipboard.writeText(report); e.target.textContent = 'Copied'; }
@@ -465,6 +468,20 @@ export function renderApp(root, state) {
         })))));
   }
 
+  // Collapsed at the bottom: this record as a test case, for advisors to send
+  // to the developer.
+  function testCaseSection() {
+    const area = h('textarea', { readonly: true, rows: 12, 'aria-label': 'De-identified test case' }, testCase);
+    return h('details', { class: 'test-case' },
+      h('summary', {}, 'Test case for the developer'),
+      h('p', {}, 'This record as a test case: grades are reduced to A (A through C), D, or F; years are shifted to start at 2000; and Workday requirements outside the core are dropped. The course list stays, so share it only with the developer.'),
+      area,
+      h('button', { type: 'button', class: 'button', onclick: async e => {
+        try { await doc.defaultView.navigator.clipboard.writeText(testCase); e.target.textContent = 'Copied'; }
+        catch { area.select(); }
+      } }, 'Copy test case'));
+  }
+
   const body = [];
   body.push(historyNotice(), mismatches(), warnings(), summary(), assumptions());
   for (const cat of catalog.categories) {
@@ -480,6 +497,7 @@ export function renderApp(root, state) {
     }
   }
   body.push(transcriptTable());
+  if (analysis && testCase) body.push(testCaseSection());
   root.replaceChildren(...body.filter(Boolean));
   if (state.tocRoot) renderToc(state.tocRoot, state);
 }

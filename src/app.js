@@ -6,6 +6,7 @@ import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, a
 import { readXlsxRows } from './xlsx.js';
 import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
 import { renderApp, catalogLabel } from './app-render.js';
+import { buildTestCase, formatTestCase } from './test-case.js';
 import catalog25 from '../catalog/catalog-categories-25.json';
 import catalog24 from '../catalog/catalog-categories-24.json';
 
@@ -22,6 +23,8 @@ const state = {
   plannedCourses: new Set(),
   // Format of the input last analyzed ('progress', 'progress-xlsx', 'transcript').
   format: null,
+  // De-identified test case text for the current input (src/test-case.js).
+  testCase: null,
   openLists: new Map(),
 };
 
@@ -109,6 +112,8 @@ function analyzeInput(catalog) {
         plannedCourses: Array.from(state.plannedCourses), overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES,
       });
       state.plannedCourses = new Set(analysis.plannedCourses);
+      state.testCase = formatTestCase(buildTestCase({ catoid: catalog._meta.catoid, source: SOURCE_LABELS[format],
+        courses, workdayStatus, overrides }, catalog.categories, KNOWN_COURSE_CATEGORIES));
       const n = courses.filter(c => c.code).length;
       const mismatches = analysis.workdayChecks.filter(c => c.kind === 'mismatch').length;
       setStatus(`Read ${n} course${n === 1 ? '' : 's'} from ${SOURCE_LABELS[format]}`
@@ -127,7 +132,7 @@ function analyzeInput(catalog) {
 function renderResults(catalog, analysis) {
   renderApp($('results'), {
     catalog, catalogs: CATALOGS, analysis, openLists: state.openLists, tocRoot: $('toc'),
-    format: state.format, source: state.format && SOURCE_LABELS[state.format],
+    format: state.format, source: state.format && SOURCE_LABELS[state.format], testCase: state.testCase,
     onTogglePlanned: code => {
       if (state.plannedCourses.has(code)) state.plannedCourses.delete(code);
       else state.plannedCourses.add(code);

@@ -36,11 +36,17 @@ export function parseTranscript(text) {
   return Array.from(byCode.values());
 }
 
-// Grades that earn no credit toward a requirement. Resolved incompletes
-// ("IA", "IB", ...) and CR do count.
-export const NON_PASSING_GRADES = new Set(['F', 'W', 'WF', 'WP', 'I', 'NC', 'AU']);
+// Grades that earn no credit toward a requirement (catalog: F; I, incomplete;
+// W, authorized withdrawal; N, unauthorized withdrawal; NR, no report). A
+// completed incomplete keeps the I before its new grade ("IA-"), which counts
+// as that grade, so "IF" earns no credit. Transfer CR counts.
+export const NON_PASSING_GRADES = new Set(['F', 'I', 'W', 'N', 'NR']);
 export function isNonPassingGrade(grade) {
-  return NON_PASSING_GRADES.has((grade || '').toUpperCase());
+  return NON_PASSING_GRADES.has(resolvedGrade(grade));
+}
+// "IA-" → "A-"; other grades unchanged (uppercased).
+export function resolvedGrade(grade) {
+  return (grade || '').toUpperCase().replace(/^I(?=[A-F])/, '');
 }
 
 // "2025 Spring" → sortable number; null when absent or unrecognized.

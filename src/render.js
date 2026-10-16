@@ -315,7 +315,7 @@ export function render(analysis, options = {}) {
       const area = document.createElement('textarea');
       area.readOnly = true;
       area.rows = 8;
-      area.value = bugReport(analysis, m, { source: options.source });
+      area.value = bugReport(analysis, m, { source: options.source, testCase: options.testCase });
       box.append(line, area);
     }
     firstCore.parentElement.insertBefore(box, firstCore);

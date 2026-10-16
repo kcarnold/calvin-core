@@ -2,6 +2,7 @@ import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, p
 import { readXlsxRows } from './xlsx.js';
 import { clearRenderedState, render } from './render.js';
 import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
+import { buildTestCase, formatTestCase } from './test-case.js';
 
 // Core Program pages, newest first. Requirements are read from whichever page
 // is open, so a student should use the catalog for their entry year.
@@ -202,10 +203,13 @@ function showAnalysis(input) {
   const analysis = analyze(categories, courses, {
     plannedCourses: Array.from(plannedCourses), overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES,
   });
+  const testCase = formatTestCase(buildTestCase({ catoid: currentCatalogPage()?.catoid, source: 'catalog page, ' + format,
+    courses, workdayStatus, overrides }, categories, KNOWN_COURSE_CATEGORIES));
   const appliedPlanned = new Set(analysis.plannedCourses || []);
   plannedCourses.clear();
   for (const code of appliedPlanned) plannedCourses.add(code);
   render(analysis, {
+    testCase,
     source: { progress: 'Academic Progress (pasted, catalog page)', 'progress-xlsx': 'Academic Progress export (catalog page)',
       transcript: 'Academic History (pasted, catalog page)' }[format],
     onTogglePlanned: (courseCode) => {
