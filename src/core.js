@@ -591,6 +591,18 @@ export function inferPlaceholderCategory(subject, cats, extraCourses = {}) {
   return { category, subDiscipline };
 }
 
+// Planned courses as transcript entries, for a projected analyze() run that
+// counts them as if in progress. hoursOf(code) → { min, max } or undefined
+// (hours from the course schedule); variable hours count their minimum, and
+// unknown hours count 0 (still enough for a pick-one requirement).
+export function plannedEntries(codes, hoursOf) {
+  return codes.map(code => {
+    const h = hoursOf(code);
+    return { code, title: '', grade: '', hours: h ? h.min : 0, status: 'in-progress', isPlannedEntry: true,
+      hoursKnown: !!h };
+  });
+}
+
 // options.extraCourses: { [category name]: { [course code]: sub-discipline or null } }
 // Additional course→requirement mappings (e.g. KNOWN_COURSE_CATEGORIES, the union
 // of all known catalogs). Additive only: a taken course listed here counts toward

@@ -12,6 +12,15 @@ Supported catalogs (listed in `CATALOG_PAGES` in `src/ui.js` and `CATALOGS` in `
 
 catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an empty 202. Save page HTML from a real browser into `catalog/catalog-<catoid>.html`, update `CATALOG_INFO` (savedAt; navoid for a new catalog) in `test/catalog-json.js`, and run `npm run generate-catalog -- <catoid>`. A new catalog also needs adding to `CATALOGS` in `src/app.js`.
 
+## Course schedule (sections and hours)
+
+- `schedule/CourseSchedule-<term>.json`: Workday course-search exports, downloaded by hand once per term from the API behind https://sites.calvin.edu/courses/course-search.js (don't hit it repeatedly). `SCHEDULE_INFO` in `test/schedule-json.js` gives each term's label, savedAt, and `shown`. `npm run generate-schedule` → `schedule/sections.json` (bundled by the app; `test-schedule.js` checks it's a fresh generation).
+- `hours[code]` = `{ min, max, term }` from the latest term offering it, any section (closed too); a lecture includes its lab (`CHEM 101` 3 + `CHEM 101L` 1). Hours-only terms (`shown: false`, e.g. last fall's) only feed this: a 26FA section says nothing about 27FA.
+- `offerings[code][term]`: sections of shown terms, minus Closed and CPI. Status (open/waitlist/full) is never shown to students. Labs are listed under their lecture (`lab: true`).
+- App: course rows show hours and a collapsed section list (not for taken/in-progress courses). Courses with no listed sections still show; nothing is filtered by offering.
+- Plan: `plannedEntries` turns planned codes into in-progress entries with schedule hours (variable → minimum; unknown → 0). `app.js` runs a second `analyze()` with them (the projection); cards show "With plan: …" when it differs and the summary gives the planned count. The actual analysis and Workday checks never include plans.
+- The export has no section-level tags (PHIL 153-C's Diversity and Difference tag isn't in it); that needs a Workday report.
+
 ## Not claiming more than the catalog
 
 - `INSTRUCTION_RULES` in `src/core.js`: every sentence of catalog instructions must match exactly one rule, either `checked` (enforced, with `verify` confirming the parsed fields match the wording), `partial`, `advice`, or not checked with a `note`. The app labels each sentence accordingly. `test/test-catalog-claims.js` fails on unrecognized wording.
@@ -48,6 +57,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/catalog-json.js` — `CATALOG_INFO`, `buildCatalogJson(html, catoid)` (strips DOM fields; adds coid, coreId, alternatives, kuAggregate), `buildUnion`.
 - `test/generate-catalog-json.js` — `node test/generate-catalog-json.js <catoid>`: catalog/catalog-<catoid>.html → catalog/catalog-categories-<catoid>.json, then regenerates `src/catalog-courses.js` from all catalog JSONs. `loadCategories(catoid)` in helpers defaults to the newest catalog.
 - `catalog/` — Saved catalog HTML and generated JSON (public, committed). Integration snapshots use `catalog-24.html`.
+- `schedule/` — Saved course-search exports and generated `sections.json` (see "Course schedule"). `test/schedule-json.js` (`SCHEDULE_INFO`, `buildScheduleJson`), `test/generate-schedule-json.js`, `test/test-schedule.js`.
 - `test/fixtures/` — Student data; private transcripts gitignored.
 - `script.js` — Legacy monolith (kept for reference).
 
@@ -60,6 +70,7 @@ npm test               # unit tests (node:test) + integration tests
 npm run test:unit      # parsing, logic, opportunities, catalog claims/snapshot, app fidelity
 npm run test:integration  # legacy harness with real transcript snapshots
 npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from catalog-25.html
+npm run generate-schedule       # re-generate schedule/sections.json from schedule/CourseSchedule-*.json
 ```
 
 ### Test layers
@@ -152,7 +163,7 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 
 ## Not Yet Implemented
 
-- Credit hours for **untaken** courses (would require AJAX calls to `preview_course.php` — see `onclick` attrs on course links for `coid` param). Currently only transcript hours are used.
+- Credit hours for untaken courses that aren't in any saved schedule term (about a third of core courses); their Plan counts 0 hours.
 - "One Foundations of Christianity course must be completed at Calvin" and "Test credit ... may not satisfy Engaged Citizenship" aren't checked (shown as Not checked).
 - World Languages II's "101-102 in a different language" option isn't checked (Partly checked); see issue #2.
 - No persistence — transcript must be re-pasted (or the export re-chosen) each time (app remembers only the catalog year, in localStorage).

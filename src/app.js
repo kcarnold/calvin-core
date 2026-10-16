@@ -2,13 +2,14 @@
 // pasted Workday text and chosen .xlsx exports are parsed here and never sent
 // anywhere.
 
-import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, analyze, hasCoreRequirements, ONE_TABLE_EXPORT_MESSAGE } from './core.js';
+import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, analyze, plannedEntries, hasCoreRequirements, ONE_TABLE_EXPORT_MESSAGE } from './core.js';
 import { readXlsxRows } from './xlsx.js';
 import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
 import { renderApp, catalogLabel } from './app-render.js';
 import { buildTestCase, formatTestCase } from './test-case.js';
 import catalog25 from '../catalog/catalog-categories-25.json';
 import catalog24 from '../catalog/catalog-categories-24.json';
+import schedule from '../schedule/sections.json';
 
 // Newest first.
 const CATALOGS = [catalog25, catalog24];
@@ -81,22 +82,27 @@ function update() {
   document.querySelectorAll('a[data-catalog-link]').forEach(el => { el.href = meta.sourceUrl; });
 
   let analysis = null;
+  let projection = null;
   try {
-    analysis = analyzeInput(catalog);
+    ({ analysis, projection } = analyzeInput(catalog));
   } catch (err) {
     // Never fail silently: whatever the input, say what went wrong.
     console.error('[Core Planner]', err);
     analysis = null;
+    projection = null;
     setStatus(`Something went wrong reading your courses (${err.message}). `
       + 'Please report this, with the file or text you used if you can share it.', 'error');
   }
-  renderResults(catalog, analysis);
+  renderResults(catalog, analysis, projection);
 }
 
 // Parses the current input and analyzes it, setting the status line.
-// Returns the analysis, or null when there's nothing to show.
+// Returns { analysis, projection }: the analysis (null when there's nothing to
+// show), and when courses are planned, the same counting them as in progress
+// (hours from the course schedule).
 function analyzeInput(catalog) {
   let analysis = null;
+  let projection = null;
   const text = state.text.trim();
   const input = state.file ?? (text ? parseInput(text) : null);
   state.format = input && !input.error ? input.format : null;
@@ -109,10 +115,13 @@ function analyzeInput(catalog) {
         ? `No courses found in ${state.file.name}. Choose the .xlsx file Workday exports from Academic Progress.`
         : 'No courses found. Copy the whole Academic History or Academic Progress page from Workday and paste again.', 'error');
     } else {
-      analysis = analyze(catalog.categories, courses, {
-        plannedCourses: Array.from(state.plannedCourses), overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES,
-      });
+      const options = { overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES };
+      analysis = analyze(catalog.categories, courses, { ...options, plannedCourses: Array.from(state.plannedCourses) });
       state.plannedCourses = new Set(analysis.plannedCourses);
+      if (analysis.plannedCourses.length) {
+        projection = analyze(catalog.categories,
+          [...courses, ...plannedEntries(analysis.plannedCourses, code => schedule.hours[code])], options);
+      }
       state.testCase = formatTestCase(buildTestCase({ catoid: catalog._meta.catoid, source: SOURCE_LABELS[format],
         courses, workdayStatus, overrides }, catalog.categories, KNOWN_COURSE_CATEGORIES));
       const n = courses.filter(c => c.code).length;
@@ -127,12 +136,12 @@ function analyzeInput(catalog) {
   } else {
     setStatus('', null);
   }
-  return analysis;
+  return { analysis, projection };
 }
 
-function renderResults(catalog, analysis) {
+function renderResults(catalog, analysis, projection) {
   renderApp($('results'), {
-    catalog, catalogs: CATALOGS, analysis, openLists: state.openLists, tocRoot: $('toc'),
+    catalog, catalogs: CATALOGS, analysis, projection, schedule, openLists: state.openLists, tocRoot: $('toc'),
     format: state.format, source: state.format && SOURCE_LABELS[state.format], testCase: state.testCase,
     onTogglePlanned: code => {
       if (state.plannedCourses.has(code)) state.plannedCourses.delete(code);

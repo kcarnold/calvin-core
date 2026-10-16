@@ -25,6 +25,8 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const CATALOG_DIR = join(ROOT, 'catalog');
 const CATOIDS = readdirSync(CATALOG_DIR).map(f => f.match(/^catalog-(\d+)\.html$/)?.[1]).filter(Boolean);
 const CATALOGS = CATOIDS.map(id => JSON.parse(readFileSync(join(CATALOG_DIR, `catalog-categories-${id}.json`), 'utf-8')));
+// Rendered with section lists and hours, so the comparisons below cover them too.
+const SCHEDULE = JSON.parse(readFileSync(join(ROOT, 'schedule', 'sections.json'), 'utf-8'));
 
 const norm = s => (s || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 const squash = s => (s || '').replace(/\s+/g, '');
@@ -52,7 +54,7 @@ function render(catalog, transcript, withToc = false) {
   const doc = new JSDOM('<!doctype html><main id="results"></main><nav id="toc"></nav>').window.document;
   const root = doc.getElementById('results');
   const analysis = transcript && analyze(catalog.categories, transcript, { extraCourses: KNOWN_COURSE_CATEGORIES });
-  renderApp(root, { catalog, catalogs: CATALOGS, analysis, onTogglePlanned: () => {},
+  renderApp(root, { catalog, catalogs: CATALOGS, analysis, schedule: SCHEDULE, onTogglePlanned: () => {},
     tocRoot: withToc ? doc.getElementById('toc') : null });
   return root;
 }
