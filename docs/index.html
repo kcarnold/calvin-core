@@ -27,6 +27,8 @@
       --plan-bg: #f3e8fb;
       --warn: #a2341b;
       --warn-bg: #fdece7;
+      --overlap: #1a5fc8;
+      --overlap-bg: #e8f0fe;
       --radius: 12px;
       color-scheme: light;
     }
@@ -50,6 +52,8 @@
         --plan-bg: #33213f;
         --warn: #ff9b82;
         --warn-bg: #3d1f18;
+        --overlap: #9cc0ff;
+        --overlap-bg: #1c2b44;
         color-scheme: dark;
       }
     }
@@ -218,7 +222,8 @@
     .chip-excluded { color: var(--warn); background: var(--surface); }
     .chip-min { color: var(--min); background: var(--min-bg); }
     .chip-muted { color: var(--muted); background: var(--surface-2); font-weight: 500; }
-    .also { color: var(--muted); }
+    .also { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--overlap); background: var(--overlap-bg); }
+    .also a { color: inherit; }
     .plan-toggle { margin-left: auto; font: inherit; font-size: 12px; font-weight: 600; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--plan); color: var(--plan); background: transparent; cursor: pointer; }
     .plan-toggle.is-on { background: var(--plan); color: var(--surface); }
 

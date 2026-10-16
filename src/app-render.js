@@ -129,6 +129,14 @@ export function renderApp(root, state) {
   const meta = catalog._meta;
   const resultsByIndex = new Map((analysis?.results || []).map(r => [r.coreIndex, r]));
   const slugByName = new Map(catalog.categories.filter(c => c.name).map(c => [c.name, c.slug]));
+  // Requirements this catalog lists each course under, for before there's an analysis.
+  const listedUnder = new Map();
+  for (const cat of catalog.categories) {
+    for (const c of cat.courses || []) {
+      if (!listedUnder.has(c.code)) listedUnder.set(c.code, []);
+      if (!listedUnder.get(c.code).includes(cat.name)) listedUnder.get(c.code).push(cat.name);
+    }
+  }
 
   // Where another catalog lists a course under the same requirement.
   function otherCatalogListing(catName, code) {
@@ -172,9 +180,10 @@ export function renderApp(root, state) {
           (a.isTransfer ? 'Transfer' : 'Taken') + (a.grade && !a.isTransfer ? ` · ${a.grade}` : '') + ` · ${fmtHours(a.hours)} hrs`));
       } else if (a.isPlanned) { rowCls += ' is-planned'; flags.push(h('span', { class: 'chip chip-planned' }, 'Planned')); }
       else if (a.isMaxedDiscipline) { rowCls += ' is-maxed'; flags.push(h('span', { class: 'chip chip-muted' }, 'Discipline max reached')); }
-      if (a.otherCategories?.length) {
-        flags.push(h('span', { class: 'also' }, 'Also listed for ', categoryLinks(a.otherCategories)));
-      }
+    }
+    const others = a ? a.otherCategories || [] : (listedUnder.get(c.code) || []).filter(n => n !== cat.name);
+    if (others.length) {
+      flags.push(h('span', { class: 'also' }, '\u21c9 Also listed for ', categoryLinks(others)));
     }
     const active = a && (a.isTaken || a.isInProgress);
     const planBtn = a && !active && typeof state.onTogglePlanned === 'function'
