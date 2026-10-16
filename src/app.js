@@ -2,7 +2,7 @@
 // pasted Workday text and chosen .xlsx exports are parsed here and never sent
 // anywhere.
 
-import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, analyze } from './core.js';
+import { parseTranscript, parseProgress, parseProgressRows, detectInputFormat, analyze, hasCoreRequirements, ONE_TABLE_EXPORT_MESSAGE } from './core.js';
 import { readXlsxRows } from './xlsx.js';
 import { KNOWN_COURSE_CATEGORIES } from './catalog-courses.js';
 import { renderApp, catalogLabel } from './app-render.js';
@@ -60,6 +60,7 @@ async function readExport(file) {
   try {
     const rows = readXlsxRows(await file.arrayBuffer());
     const { courses, overrides, workdayStatus } = parseProgressRows(rows);
+    if (!hasCoreRequirements(workdayStatus)) throw new Error(ONE_TABLE_EXPORT_MESSAGE);
     return { name: file.name, format: 'progress-xlsx', courses, overrides, workdayStatus };
   } catch (err) {
     return { name: file.name, error: err.message };

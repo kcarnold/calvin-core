@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { readXlsxRows } from '../src/xlsx.js';
-import { parseProgressRows, workdayRequirementCategory } from '../src/core.js';
+import { parseProgressRows, workdayRequirementCategory, hasCoreRequirements } from '../src/core.js';
 import { analyze } from './recorder.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { loadCategories, getResult } from './helpers.js';
@@ -139,5 +139,25 @@ describe('parseProgressRows', () => {
 
   it('finds no courses in a sheet without a requirement table', () => {
     assert.deepEqual(parseProgressRows([['Course', 'Grade'], ['CS 108 - Intro', 'A']]).courses, []);
+  });
+});
+
+describe('hasCoreRequirements', () => {
+  it('is true for the whole-page export', () => {
+    assert.ok(hasCoreRequirements(parseProgressRows(sample()).workdayStatus));
+  });
+
+  it('is false for one table exported on its own', () => {
+    const majorTable = [
+      HEADER,
+      ['Data Structures', 'Satisfied', '', 'CS 112 - Data Structures', '2026 Spring', '4', 'A'],
+      ['Earn a 2.000 or better Program of Study GPA', 'Satisfied'],
+    ];
+    assert.equal(hasCoreRequirements(parseProgressRows(majorTable).workdayStatus), false);
+    const overall = [
+      ['Hours Defined', 'Hours in Progress', 'Hours Satisfying', 'Remaining', 'Status'],
+      ['120', '14', '83', 'Minimum 37 Hour(s)', 'Not Satisfied'],
+    ];
+    assert.equal(hasCoreRequirements(parseProgressRows(overall).workdayStatus), false);
   });
 });

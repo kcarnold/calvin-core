@@ -555,6 +555,15 @@ const WORKDAY_REQUIREMENTS = [
 export function workdayRequirementCategory(requirement) {
   return WORKDAY_REQUIREMENTS.find(([re]) => re.test(requirement))?.[1] ?? null;
 }
+
+// Whether a progress parse (its workdayStatus) lists any core requirement.
+// The whole-page export always does; a single table's Excel export (e.g. a
+// major's requirements, or Overall Academic Progress) doesn't.
+export function hasCoreRequirements(workdayStatus) {
+  return [...workdayStatus.keys()].some(req => workdayRequirementCategory(req));
+}
+export const ONE_TABLE_EXPORT_MESSAGE = 'it doesn’t list any core requirements, so it’s probably the export of just one table. '
+  + 'Use the Excel button at the very top right of the page, next to PDF, not the ones above each table';
 // A placeholder counts where its subject's K&U courses do, if at least this
 // share of them sit in one (category, sub-discipline).
 const PLACEHOLDER_MIN_SHARE = 0.75;
