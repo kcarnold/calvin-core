@@ -240,7 +240,7 @@ export function render(analysis, options = {}) {
       for (const n of KU_NAMES) {
         const info = kuSummary.hoursByCategory[n] || { raw: 0, effective: 0, max: null };
         const cls = info.raw > 0 ? 'complete' : 'incomplete';
-        const capNote = (info.max !== null && info.raw > info.max) ? `<div class="cap-note">${info.raw}h earned, capped at ${info.max}h</div>` : '';
+        const capNote = info.raw > info.effective ? `<div class="cap-note">${info.raw}h earned, ${info.effective}h count</div>` : '';
         const slug = slugify(n);
         kuGrid += `<a href="#${slug}" class="ca-summary-item ${cls}" data-slug="${slug}">
           <span class="label">${n}</span><br><span class="value">${info.effective} hrs</span>${capNote}</a>`;
@@ -427,8 +427,8 @@ export function render(analysis, options = {}) {
       note.className = 'ca-hours-note';
       let txt = '\u{1F4D0} ' + r.hoursEarned + 'h earned';
       if (r.minHours !== null) txt += ' (need ' + r.minHours + '\u2013' + r.maxHours + 'h)';
-      if (r.maxHours !== null && r.hoursEarned > r.maxHours)
-        txt += ' \u26A0\uFE0F over max by ' + (r.hoursEarned - r.maxHours) + 'h \u2014 only ' + r.maxHours + 'h count toward K&U total';
+      if (r.hoursEffective < r.hoursEarned)
+        txt += ' \u26A0\uFE0F only ' + r.hoursEffective + 'h count toward K&U total';
       if (Object.keys(r.hoursByDiscipline).length > 0) {
         const parts = Object.entries(r.hoursByDiscipline).map(([d, h]) => {
           return d + ': ' + h + 'h' + (r.maxedDisciplines.has(d) ? ' \u26A0\uFE0F maxed' : '');

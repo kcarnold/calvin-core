@@ -316,6 +316,17 @@ describe('discipline cap edge cases', () => {
       .expect('Social and Behavioral Sciences', { status: 'complete', hours: 8, effective: 6 })
       .run(t);
   });
+
+  it('Social & Behavioral Sciences: 10h in Economics counts only 4h toward K&U', async (t) => {
+    await scenario('S&B one discipline over its cap')
+      .taken('ECON 221', 4)
+      .taken('ECON 222', 4)
+      .inProgress('ECON 232', 2)
+      // 10h earned, but at most 4h from one discipline count
+      .expect('Social and Behavioral Sciences', { status: 'satisfied', hours: 10, effective: 4 })
+      .expectKU({ total: 4, categories: 1 })
+      .run(t);
+  });
 });
 
 // ---- Catalog-year differences ----

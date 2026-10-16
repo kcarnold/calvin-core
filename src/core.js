@@ -707,7 +707,12 @@ export function analyze(cats, transcript, options = {}) {
       counted.add(tc);
       hrsRaw += tc.hours; const d = c.subDiscipline || 'General'; hByD[d] = (hByD[d] || 0) + tc.hours;
     }
-    const hrsEffective = (cat.maxHours !== null) ? Math.min(hrsRaw, cat.maxHours) : hrsRaw;
+    // Hours that count: each discipline capped at maxPerDiscipline, then the total at maxHours.
+    // Courses with no known discipline ('General') aren't capped together.
+    const hrsCapped = cat.maxPerDiscipline
+      ? Object.entries(hByD).reduce((s, [d, h]) => s + (d === 'General' ? h : Math.min(h, cat.maxPerDiscipline)), 0)
+      : hrsRaw;
+    const hrsEffective = (cat.maxHours !== null) ? Math.min(hrsCapped, cat.maxHours) : hrsCapped;
     const maxedD = new Set();
     if (cat.maxPerDiscipline) for (const [d, h] of Object.entries(hByD)) if (h >= cat.maxPerDiscipline) maxedD.add(d);
     const hasRemainingCourseOptions = cat.courses.some(c => !allActiveSet.has(c.code) && !maxedD.has(c.subDiscipline || 'General'));
@@ -721,7 +726,7 @@ export function analyze(cats, transcript, options = {}) {
     }
     else {
       const minReq = cat.minHours || 0;
-      if (hrsRaw < minReq) status = 'incomplete';
+      if (hrsCapped < minReq) status = 'incomplete';
       else if (hrsRaw === 0 && minReq === 0) status = 'optional-available';
       else if (cat.maxPerDiscipline && cat.maxHours !== null && hrsEffective < cat.maxHours && hasRemainingCourseOptions) status = 'satisfied';
       else status = 'complete';

@@ -35,7 +35,7 @@ const SECTIONS = [
 
 // ---- Run the tests, recording ----
 const dir = mkdtempSync(join(tmpdir(), 'core-test-report-'));
-const run = spawnSync(process.execPath, ['--test', ...SECTIONS.map(s => s.file)], {
+const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...SECTIONS.map(s => s.file)], {
   cwd: ROOT, env: { ...process.env, CORE_TEST_REPORT: dir }, encoding: 'utf-8',
 });
 const passed = +(run.stdout.match(/^# pass (\d+)/m)?.[1] ?? 0);

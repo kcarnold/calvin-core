@@ -254,7 +254,7 @@ export function renderApp(root, state) {
     if (cat.maxPerDiscipline) parts.push(`at most ${cat.maxPerDiscipline} from one discipline`);
     if (!r) return h('p', { class: 'req-hours' }, parts.join(', ') + '.');
     let text = `You have ${fmtHours(r.hoursEarned)} hrs here. ` + parts.join(', ') + '.';
-    if (cat.maxHours !== null && r.hoursEarned > cat.maxHours) text += ` Only ${cat.maxHours} count toward the K&U total.`;
+    if (r.hoursEffective < r.hoursEarned) text += ` Only ${fmtHours(r.hoursEffective)} count toward the K&U total.`;
     return h('p', { class: 'req-hours' }, text);
   }
 
