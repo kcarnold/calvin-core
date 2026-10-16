@@ -29,12 +29,26 @@ export function parseTranscript(text) {
     match = rowRe.exec(normalized);
   }
 
-  // Deduplicate by course code; keep first occurrence from the transcript.
+  // Deduplicate by course code. A repeated course's later attempt wins
+  // (assumes the page lists attempts oldest first).
   const byCode = new Map();
-  for (const c of raw) {
-    if (!byCode.has(c.code)) byCode.set(c.code, { ...c });
-  }
+  for (const c of raw) byCode.set(c.code, { ...c });
   return Array.from(byCode.values());
+}
+
+// Grades that earn no credit toward a requirement. Resolved incompletes
+// ("IA", "IB", ...) and CR do count.
+export const NON_PASSING_GRADES = new Set(['F', 'W', 'WF', 'WP', 'I', 'NC', 'AU']);
+export function isNonPassingGrade(grade) {
+  return NON_PASSING_GRADES.has((grade || '').toUpperCase());
+}
+
+// "2025 Spring" → sortable number; null when absent or unrecognized.
+const TERM_ORDER = { winter: 0, interim: 0, spring: 1, summer: 2, fall: 3 };
+function periodRank(period) {
+  const m = (period || '').match(/^(\d{4})\s+(\w+)$/);
+  if (!m || !(m[2].toLowerCase() in TERM_ORDER)) return null;
+  return +m[1] * 10 + TERM_ORDER[m[2].toLowerCase()];
 }
 
 // Category an exemption satisfies, from its name ("Language Exemption") or the
@@ -52,22 +66,35 @@ function exemptionTarget(name, requirement) {
 // which progressFromRecords turns into courses.
 const PROGRESS_COURSE_RE = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?|CORE)\s*-\s*(.+)$/;
 const PROGRESS_EXEMPTION_RE = /^(.+?\bExemption)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
+// Any other dated registration ("Military - 05/01/2025"): not a course, but
+// Workday may count it toward a requirement.
+const PROGRESS_DATED_ITEM_RE = /^(.+?)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
+const WORKDAY_STATUS_RE = /^(Satisfied|Not Satisfied|In Progress)$/;
 
 function cleanRequirementName(name) {
   return name.replace(/\s*\(Click for more details\)/g, '').replace(/\s*\(Override Assigned\)/g, '').trim();
 }
 
-// Returns { courses: [...], exemptions: [...], overrides: Set }
+// Returns { courses: [...], exemptions: [...], overrides: Set, workdayStatus: Map }
 // Each course records the Workday requirement(s) it was listed under in
 // `requirements`, so analyze() can flag K&U claims it can't match.
+// workdayStatus: requirement name → { status, items } (Workday's Status and its
+// "Registrations Used" entries, verbatim), for analyze() to compare with its own.
 function progressFromRecords(records) {
   const raw = [];
   const exemptions = [];
   const overrides = new Set();
+  const workdayStatus = new Map();
 
-  for (const { requirement: rawRequirement, item, period, hours, grade } of records) {
+  for (const { requirement: rawRequirement, item, period, hours, grade, status: reqStatus } of records) {
     const requirement = rawRequirement ? cleanRequirementName(rawRequirement) : null;
     if (rawRequirement && /\(Override Assigned\)/.test(rawRequirement)) overrides.add(requirement);
+    if (requirement) {
+      if (!workdayStatus.has(requirement)) workdayStatus.set(requirement, { status: null, items: [] });
+      const ws = workdayStatus.get(requirement);
+      if (reqStatus && !ws.status) ws.status = reqStatus;
+      if (item && !ws.items.includes(item)) ws.items.push(item);
+    }
     if (!item) continue;
 
     // Exemptions (e.g., "Language Exemption - 07/01/2023")
@@ -86,7 +113,11 @@ function progressFromRecords(records) {
     }
 
     const cm = item.match(PROGRESS_COURSE_RE);
-    if (!cm) continue;
+    if (!cm) {
+      const dated = item.match(PROGRESS_DATED_ITEM_RE);
+      if (dated) exemptions.push({ name: dated[1].trim(), date: dated[2], target: null });
+      continue;
+    }
     let title = cm[3].trim();
     let status = 'completed';
     if (/\(In Progress\)/.test(title)) {
@@ -100,23 +131,25 @@ function progressFromRecords(records) {
       requirements: requirement ? [requirement] : [] }));
   }
 
-  // Deduplicate by code/title; keep first occurrence, but remember every
-  // requirement the course was listed under.
+  // Deduplicate by code/title, remembering every requirement the course was
+  // listed under. A repeated course's later attempt wins: by academic period
+  // when both have one, else the later listing.
   const byCode = new Map();
   for (const c of raw) {
     if (c.code === null) {
       if (!byCode.has(c.title)) byCode.set(c.title, c);
       continue;
     }
-    if (!byCode.has(c.code)) {
-      byCode.set(c.code, { ...c });
-    } else {
-      const kept = byCode.get(c.code);
-      for (const r of c.requirements) if (!kept.requirements.includes(r)) kept.requirements.push(r);
-    }
+    const kept = byCode.get(c.code);
+    if (!kept) { byCode.set(c.code, { ...c, requirements: [...c.requirements] }); continue; }
+    const requirements = [...kept.requirements];
+    for (const r of c.requirements) if (!requirements.includes(r)) requirements.push(r);
+    const [a, b] = [periodRank(kept.period), periodRank(c.period)];
+    const later = a !== null && b !== null ? b > a : kept.period !== c.period;
+    byCode.set(c.code, later ? { ...c, requirements } : { ...kept, requirements });
   }
   const courses = Array.from(byCode.values());
-  return { courses, exemptions, overrides };
+  return { courses, exemptions, overrides, workdayStatus };
 }
 
 // Parses copy-paste from Workday Academic Progress page: one field per line.
@@ -133,13 +166,19 @@ export function parseProgress(text) {
   const gradeRe = /^[A-Z]{1,2}[+-]?$/;
   // Status/remaining lines and page chrome that aren't requirement names.
   const notRequirementRe = /^(Satisfied|Not Satisfied|In Progress|Satisfied With|Minimum\b.*|.*Sort and filter column)$/;
-  const isItem = line => PROGRESS_COURSE_RE.test(line) || PROGRESS_EXEMPTION_RE.test(line);
+  const isItem = line => PROGRESS_COURSE_RE.test(line) || PROGRESS_DATED_ITEM_RE.test(line);
   const records = [];
   let requirement = null;
+  let requirementRecord = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (PROGRESS_EXEMPTION_RE.test(line)) {
+    // The status line right after a requirement name is Workday's Status for it.
+    if (WORKDAY_STATUS_RE.test(line) && requirementRecord && !requirementRecord.status) {
+      requirementRecord.status = line;
+      continue;
+    }
+    if (PROGRESS_DATED_ITEM_RE.test(line)) {
       // Look ahead for hours
       let hours = 0;
       for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
@@ -147,6 +186,7 @@ export function parseProgress(text) {
         if (PROGRESS_COURSE_RE.test(lines[j])) break;
       }
       records.push({ requirement, item: line, period: null, hours, grade: null });
+      requirementRecord = null;
       continue;
     }
 
@@ -155,7 +195,8 @@ export function parseProgress(text) {
       // following courses are listed under.
       if (!periodRe.test(line) && !hoursRe.test(line) && !gradeRe.test(line) && !notRequirementRe.test(line)) {
         requirement = line;
-        records.push({ requirement, item: null });
+        requirementRecord = { requirement, item: null, status: null };
+        records.push(requirementRecord);
       }
       continue;
     }
@@ -176,6 +217,7 @@ export function parseProgress(text) {
       }
     }
     records.push({ requirement, item: line, period, hours, grade });
+    requirementRecord = null;
   }
   return progressFromRecords(records);
 }
@@ -208,6 +250,7 @@ export function parseProgressRows(rows) {
       period: get('period') || null,
       hours: Number.isFinite(hours) ? hours : 0,
       grade: get('grade') || null,
+      status: get('status'),
     });
   }
   return progressFromRecords(records);
@@ -537,8 +580,13 @@ export function inferPlaceholderCategory(subject, cats, extraCourses = {}) {
 // Additional course→requirement mappings (e.g. KNOWN_COURSE_CATEGORIES, the union
 // of all known catalogs). Additive only: a taken course listed here counts toward
 // the named requirement even if the page's own list omits it.
+// options.workdayStatus: Map from parseProgress/parseProgressRows. Where Workday
+// says Satisfied or Not Satisfied, analyze() compares it with its own result
+// (analysis.workdayChecks).
 export function analyze(cats, transcript, options = {}) {
-  const mergedTranscript = mergeLabHoursForAnalysis(transcript);
+  // Failed, withdrawn, incomplete, and audited courses count toward nothing.
+  const notCounted = transcript.filter(c => c.code && isNonPassingGrade(c.grade));
+  const mergedTranscript = mergeLabHoursForAnalysis(transcript.filter(c => !notCounted.includes(c)));
   const completedOrTransfer = mergedTranscript.filter(c => c.status !== 'in-progress' && c.status !== 'exemption');
   const inProgressCourses = mergedTranscript.filter(c => c.status === 'in-progress');
   const exemptionEntries = mergedTranscript.filter(c => c.status === 'exemption');
@@ -755,15 +803,48 @@ export function analyze(cats, transcript, options = {}) {
     }
   }
 
+  const kuResults = results.filter(r => KU_NAMES.includes(r.name));
+  const kuMet = kuAggregate ? kuTotal >= kuAggregate.minHours && kuCount >= kuAggregate.minCategories
+    && kuResults.every(r => r.status !== 'incomplete') : null;
+  const kuSummary = { totalHours: kuTotal, requiredHours: kuAggregate?.minHours ?? null, categoriesUsed: kuCount,
+    requiredCategories: kuAggregate?.minCategories ?? null, hoursByCategory: kuH, met: kuMet };
+
+  // Workday's Status vs ours. Workday "Satisfied" by something that isn't a
+  // course ("Military - 05/01/2025", an override with nothing listed) is taken
+  // at its word ('accepted'). Any other disagreement is a 'mismatch': one of
+  // us is wrong, and the app asks for a bug report. "In Progress" isn't
+  // compared: Workday uses it for both partly done and done-once-courses-finish.
+  const workdayChecks = [];
+  for (const [workdayRequirement, { status: workdayStatus, items }] of options.workdayStatus || []) {
+    if (workdayStatus !== 'Satisfied' && workdayStatus !== 'Not Satisfied') continue;
+    const isKu = KU_REQUIREMENT_RE.test(workdayRequirement);
+    const name = isKu ? 'K&U' : workdayRequirementCategory(workdayRequirement);
+    const r = !isKu && results.find(x => x.name === name && x.status !== 'header' && x.status !== 'info-only');
+    if (isKu ? kuMet === null : !r) continue;
+    const ourStatus = isKu ? (kuMet ? 'met' : 'not met') : r.isExempt ? 'exempt' : r.status;
+    const oursDone = isKu ? kuMet : r.isExempt || r.status === 'complete';
+    if (oursDone === (workdayStatus === 'Satisfied')) continue;
+    const accepted = workdayStatus === 'Satisfied'
+      && (items.length === 0 || items.some(i => !PROGRESS_COURSE_RE.test(i)));
+    workdayChecks.push({ requirement: name, workdayRequirement, workdayStatus, ourStatus, items,
+      kind: accepted ? 'accepted' : 'mismatch' });
+    if (accepted) {
+      const workdaySatisfied = { workdayRequirement, items };
+      if (isKu) { kuSummary.met = true; kuSummary.workdaySatisfied = workdaySatisfied; }
+      else { r.status = 'complete'; r.workdaySatisfied = workdaySatisfied; }
+    }
+  }
+
   return {
     results,
     transcript,
+    notCounted,
+    workdayChecks,
     warnings,
     plannedCourses: Array.from(plannedSet),
     overrides: options.overrides || new Set(),
     exemptions: exemptionEntries,
     // Read from the catalog's K&U section wording; null if it couldn't be parsed.
-    kuSummary: { totalHours: kuTotal, requiredHours: kuAggregate?.minHours ?? null, categoriesUsed: kuCount,
-      requiredCategories: kuAggregate?.minCategories ?? null, hoursByCategory: kuH }
+    kuSummary,
   };
 }

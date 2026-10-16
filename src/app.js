@@ -20,6 +20,8 @@ const state = {
   // Replaces the pasted text while set.
   file: null,
   plannedCourses: new Set(),
+  // Format of the input last analyzed ('progress', 'progress-xlsx', 'transcript').
+  format: null,
   openLists: new Map(),
 };
 
@@ -45,8 +47,8 @@ function setStatus(message, kind) {
 function parseInput(text) {
   const format = detectInputFormat(text);
   if (format === 'progress') {
-    const { courses, overrides } = parseProgress(text);
-    return { format, courses, overrides };
+    const { courses, overrides, workdayStatus } = parseProgress(text);
+    return { format, courses, overrides, workdayStatus };
   }
   return { format, courses: parseTranscript(text), overrides: undefined };
 }
@@ -54,8 +56,8 @@ function parseInput(text) {
 async function readExport(file) {
   try {
     const rows = readXlsxRows(await file.arrayBuffer());
-    const { courses, overrides } = parseProgressRows(rows);
-    return { name: file.name, format: 'progress-xlsx', courses, overrides };
+    const { courses, overrides, workdayStatus } = parseProgressRows(rows);
+    return { name: file.name, format: 'progress-xlsx', courses, overrides, workdayStatus };
   } catch (err) {
     return { name: file.name, error: err.message };
   }
@@ -93,23 +95,28 @@ function analyzeInput(catalog) {
   let analysis = null;
   const text = state.text.trim();
   const input = state.file ?? (text ? parseInput(text) : null);
+  state.format = input && !input.error ? input.format : null;
   if (input?.error) {
     setStatus(`Couldn’t read ${input.name}: ${input.error}. Choose the .xlsx file Workday exports from Academic Progress.`, 'error');
   } else if (input) {
-    const { format, courses, overrides } = input;
+    const { format, courses, overrides, workdayStatus } = input;
     if (courses.length === 0) {
       setStatus(state.file
         ? `No courses found in ${state.file.name}. Choose the .xlsx file Workday exports from Academic Progress.`
         : 'No courses found. Copy the whole Academic History or Academic Progress page from Workday and paste again.', 'error');
     } else {
       analysis = analyze(catalog.categories, courses, {
-        plannedCourses: Array.from(state.plannedCourses), overrides, extraCourses: KNOWN_COURSE_CATEGORIES,
+        plannedCourses: Array.from(state.plannedCourses), overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES,
       });
       state.plannedCourses = new Set(analysis.plannedCourses);
       const n = courses.filter(c => c.code).length;
+      const mismatches = analysis.workdayChecks.filter(c => c.kind === 'mismatch').length;
       setStatus(`Read ${n} course${n === 1 ? '' : 's'} from ${SOURCE_LABELS[format]}`
         + (state.file ? ` (${state.file.name}).` : '.')
-        + (analysis.warnings.length ? ` ${analysis.warnings.length} need checking (see below).` : ''), 'ok');
+        + (format === 'transcript' ? ' Academic History isn’t fully supported; use Academic Progress if you can.' : '')
+        + (mismatches ? ` Workday disagrees on ${mismatches} requirement${mismatches === 1 ? '' : 's'} (see below).` : '')
+        + (analysis.warnings.length ? ` ${analysis.warnings.length} need checking (see below).` : ''),
+        mismatches ? 'error' : format === 'transcript' ? 'warn' : 'ok');
     }
   } else {
     setStatus('', null);
@@ -120,6 +127,7 @@ function analyzeInput(catalog) {
 function renderResults(catalog, analysis) {
   renderApp($('results'), {
     catalog, catalogs: CATALOGS, analysis, openLists: state.openLists, tocRoot: $('toc'),
+    format: state.format, source: state.format && SOURCE_LABELS[state.format],
     onTogglePlanned: code => {
       if (state.plannedCourses.has(code)) state.plannedCourses.delete(code);
       else state.plannedCourses.add(code);

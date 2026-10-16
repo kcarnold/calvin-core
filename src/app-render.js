@@ -43,6 +43,7 @@ function builder(doc) {
 function statusInfo(r) {
   if (!r) return null;
   if (r.isExempt) return { cls: 'done', text: 'Exempt' };
+  if (r.workdaySatisfied) return { cls: 'done', text: 'Satisfied in Workday' };
   switch (r.status) {
     case 'complete': return { cls: 'done', text: 'Complete' };
     case 'satisfied': return { cls: 'min', text: 'Minimum met' };
@@ -66,13 +67,47 @@ function requirementStatus(cat, r, analysis) {
 }
 
 // K&U as a whole: enough hours, enough categories, and each category's minimum.
+// (Computed by analyze(); Workday may also have accepted it.)
 export function kuStatus(analysis) {
   const ku = analysis.kuSummary;
   if (ku.requiredHours == null || ku.requiredCategories == null) return null;
-  const kuResults = analysis.results.filter(r => KU_NAMES.includes(r.name));
-  const met = ku.totalHours >= ku.requiredHours && ku.categoriesUsed >= ku.requiredCategories
-    && kuResults.every(r => r.status !== 'incomplete');
-  return { met, ...ku };
+  return { ...ku };
+}
+
+const OUR_STATUS_TEXT = { complete: 'Complete', satisfied: 'Minimum met', incomplete: 'Not yet',
+  'optional-available': 'Optional', exempt: 'Exempt', met: 'Met', 'not met': 'Not met' };
+
+// Plain text a student can copy to the developer when Workday and this tool
+// disagree. Course list included (no name or ID) so the case can be reproduced.
+// context: { catalog: _meta, source: input label }
+export function bugReport(analysis, check, context = {}) {
+  const fmtCourse = c => [c.code || c.title, c.title && c.code ? '- ' + c.title : null,
+    c.status && c.status !== 'completed' ? `(${c.status})` : null, c.period || null,
+    c.grade ? 'grade ' + c.grade : null, `${fmtHours(c.hours)} hrs`].filter(Boolean).join(' ');
+  const counted = check.requirement === 'K&U'
+    ? analysis.results.filter(r => KU_NAMES.includes(r.name))
+    : analysis.results.filter(r => r.name === check.requirement);
+  const countedLines = counted.flatMap(r => (r.courseAnnotations || [])
+    .filter(a => (a.isTaken || a.isInProgress) && !a.isExcludedTransfer)
+    .map(a => `  ${a.code} (${fmtHours(a.hours)} hrs${counted.length > 1 ? ', ' + r.name : ''})`));
+  const lines = [
+    'Core Planner bug report: Workday and Core Planner disagree',
+    context.catalog ? `Catalog: ${catalogLabel(context.catalog)} (catoid ${context.catalog.catoid}, saved ${context.catalog.savedAt})` : null,
+    context.source ? `Input: ${context.source}` : null,
+    `Requirement: ${check.requirement}`,
+    `Workday requirement: ${check.workdayRequirement}`,
+    `Workday status: ${check.workdayStatus}`,
+    `Core Planner status: ${OUR_STATUS_TEXT[check.ourStatus] || check.ourStatus}`,
+    'Workday lists:',
+    ...(check.items.length ? check.items.map(i => '  ' + i) : ['  (nothing)']),
+    'Core Planner counted:',
+    ...(countedLines.length ? countedLines : ['  (nothing)']),
+    check.requirement === 'K&U' && analysis.kuSummary
+      ? `K&U: ${fmtHours(analysis.kuSummary.totalHours)} of ${analysis.kuSummary.requiredHours} hrs, ${analysis.kuSummary.categoriesUsed} of ${analysis.kuSummary.requiredCategories} categories` : null,
+    `All courses (${analysis.transcript.length}):`,
+    ...analysis.transcript.map(c => '  ' + fmtCourse(c)),
+  ];
+  return lines.filter(l => l != null).join('\n');
 }
 
 // state: {
@@ -80,12 +115,14 @@ export function kuStatus(analysis) {
 //   catalogs: [{ _meta, categories }]   all known catalogs (for provenance)
 //   analysis: analyze() result or null
 //   openLists: Map slug → bool          remembered <details> state
+//   format, source                      input format ('transcript', ...) and its label, for notices and bug reports
 //   onTogglePlanned(code), onListToggle(slug, open)
 // }
 export function renderApp(root, state) {
   const doc = root.ownerDocument;
   const h = builder(doc);
-  const { catalog, catalogs = [catalog], analysis, openLists = new Map() } = state;
+  const { catalog, catalogs = [catalog], analysis, openLists = new Map(), source } = state;
+  const mismatchesFor = name => (analysis?.workdayChecks || []).filter(c => c.kind === 'mismatch' && c.requirement === name);
   const meta = catalog._meta;
   const resultsByIndex = new Map((analysis?.results || []).map(r => [r.coreIndex, r]));
   const slugByName = new Map(catalog.categories.filter(c => c.name).map(c => [c.name, c.slug]));
@@ -234,6 +271,9 @@ export function renderApp(root, state) {
         activeHere.map((a, i) => [i ? ', ' : '', a.code])) : null,
       extraCourses(cat, r),
       r?.isExempt ? h('p', { class: 'req-note' }, 'Academic Progress lists an exemption for this requirement.') : null,
+      r?.workdaySatisfied ? workdaySatisfiedNote(r.workdaySatisfied) : null,
+      mismatchesFor(cat.name).map(m => h('p', { class: 'req-note is-mismatch' },
+        `Workday says ${m.workdayStatus}. `, h('a', { href: '#workday-mismatches' }, 'See the report above.'))),
       hasCourses ? h('details', { class: 'course-options', open: open || null,
         ontoggle: e => state.onListToggle?.(cat.slug, e.target.open) },
         h('summary', {}, `Course options (${cat.courses.length})`),
@@ -263,6 +303,7 @@ export function renderApp(root, state) {
       groups.filter(g => g.items.length).map(g => h('div', { class: 'summary-group' },
         h('h3', {}, g.section.section),
         KU_NAMES.includes(g.items[0].cat.name) && ku ? kuMeter(ku) : null,
+        KU_NAMES.includes(g.items[0].cat.name) && ku?.workdaySatisfied ? workdaySatisfiedNote(ku.workdaySatisfied) : null,
         h('ul', { class: 'summary-chips' }, g.items.map(({ cat, r }) => {
           const s = statusInfo(r) || { cls: 'muted', text: '' };
           const isKU = KU_NAMES.includes(cat.name);
@@ -273,6 +314,12 @@ export function renderApp(root, state) {
               r.roomHours > 0 ? `Room for ${fmtHours(r.roomHours)} more` : 'Full') : null));
         })),
         KU_NAMES.includes(g.items[0].cat.name) && ku ? kuOpportunities(ku, g.items.map(i => i.r)) : null)));
+  }
+
+  function workdaySatisfiedNote(ws) {
+    return h('p', { class: 'req-note is-workday' }, 'Workday Academic Progress shows this as Satisfied',
+      ws.items.length ? [' with: ', ws.items.map((item, i) => [i ? '; ' : '', h('strong', {}, item)])] : ' (nothing listed under it)',
+      '. This tool doesn’t know how that counts, so it goes by Workday.');
   }
 
   function kuChipLabel(r) {
@@ -326,6 +373,10 @@ export function renderApp(root, state) {
         w.requirement === 'K&U' ? 'Your K&U totals may be too low.'
           : h('span', {}, 'So it isn’t counted toward ', categoryLinks([w.requirement]), ' here.')));
     }
+    for (const c of analysis.notCounted || []) {
+      items.push(h('li', {}, h('strong', {}, c.code), c.title ? ' ' + c.title : '',
+        ` has grade ${c.grade}, so it isn’t counted toward any requirement.`));
+    }
     for (const r of analysis.results) {
       for (const a of r.courseAnnotations || []) {
         if (a.isExcludedTransfer) items.push(h('li', {}, h('strong', {}, a.code),
@@ -334,6 +385,33 @@ export function renderApp(root, state) {
     }
     if (items.length === 0) return null;
     return h('section', { class: 'callout callout-warn' }, h('h2', {}, 'Check these in Workday'), h('ul', {}, items));
+  }
+
+  // Loud: Workday and this tool disagree, so one of them is wrong.
+  function mismatches() {
+    const list = (analysis?.workdayChecks || []).filter(c => c.kind === 'mismatch');
+    if (list.length === 0) return null;
+    return h('section', { class: 'callout callout-mismatch', id: 'workday-mismatches', role: 'alert' },
+      h('h2', {}, list.length === 1 ? 'Workday disagrees with this tool' : `Workday disagrees with this tool on ${list.length} requirements`),
+      h('p', {}, 'Go with Workday. This is probably a bug in this tool: please copy the report below and send it to the developer. It lists your courses but not your name or ID.'),
+      list.map(m => {
+        const report = bugReport(analysis, m, { catalog: meta, source });
+        const area = h('textarea', { readonly: true, rows: 10, 'aria-label': 'Bug report for ' + m.requirement }, report);
+        const copy = h('button', { type: 'button', class: 'button', onclick: async e => {
+          try { await doc.defaultView.navigator.clipboard.writeText(report); e.target.textContent = 'Copied'; }
+          catch { area.select(); }
+        } }, 'Copy report');
+        return h('div', { class: 'mismatch', dataset: { requirement: m.requirement } },
+          h('p', { class: 'mismatch-line' }, h('strong', {}, m.requirement === 'K&U' ? 'Knowledge and Understanding' : m.requirement),
+            `: Workday says ${m.workdayStatus}; this tool says ${OUR_STATUS_TEXT[m.ourStatus] || m.ourStatus}.`),
+          h('details', { class: 'bug-report' }, h('summary', {}, 'Bug report'), area, copy));
+      }));
+  }
+
+  function historyNotice() {
+    if (state.format !== 'transcript' || !analysis) return null;
+    return h('section', { class: 'callout callout-warn' }, h('h2', {}, 'Academic History isn’t fully supported'),
+      h('p', {}, 'Academic History doesn’t show which courses are transfer credit, are in progress, or count where in Workday, so these results may be wrong. Use your Academic Progress page instead, ideally its Excel export.'));
   }
 
   // Interpretations this result depends on, listed only when they apply.
@@ -376,17 +454,19 @@ export function renderApp(root, state) {
         h('thead', {}, h('tr', {}, ['Course', 'Title', 'Grade', 'Hrs', 'Counts toward'].map(t => h('th', {}, t)))),
         h('tbody', {}, transcript.map(c => {
           const names = where.get(c.code) || [];
+          const notCounted = analysis.notCounted?.includes(c);
           return h('tr', {},
             h('td', {}, h('strong', {}, c.code || '—'), statusText[c.status] ? h('span', { class: 'cell-status' }, statusText[c.status]) : null),
             h('td', {}, c.title),
             h('td', {}, c.grade || '—'),
             h('td', {}, fmtHours(c.hours)),
-            h('td', {}, names.length ? categoryLinks(names) : h('span', { class: 'muted' }, 'none')));
+            h('td', {}, notCounted ? h('span', { class: 'muted' }, `not counted (grade ${c.grade})`)
+              : names.length ? categoryLinks(names) : h('span', { class: 'muted' }, 'none')));
         })))));
   }
 
   const body = [];
-  body.push(warnings(), summary(), assumptions());
+  body.push(historyNotice(), mismatches(), warnings(), summary(), assumptions());
   for (const cat of catalog.categories) {
     if (cat.type === 'section-header') {
       body.push(h('section', { class: 'req-section', id: cat.slug, dataset: { coreIndex: cat.coreIndex } },

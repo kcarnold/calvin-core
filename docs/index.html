@@ -113,6 +113,7 @@
     .status { font-size: 14px; color: var(--muted); }
     .status-ok { color: var(--done); }
     .status-error { color: var(--warn); }
+    .status-warn { color: var(--todo); }
     .privacy { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
 
     #results { padding-bottom: 48px; }
@@ -150,6 +151,14 @@
     .callout li + li { margin-top: 4px; }
     .callout-warn { background: var(--warn-bg); border-color: transparent; }
     .callout-warn h2 { color: var(--warn); }
+    .callout-mismatch { background: var(--warn-bg); border: 2px solid var(--warn); }
+    .callout-mismatch h2 { color: var(--warn); }
+    .callout-mismatch > p { margin: 0 0 10px; }
+    .mismatch + .mismatch { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .mismatch-line { margin: 0 0 6px; }
+    .bug-report textarea { width: 100%; min-height: 140px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; box-sizing: border-box; margin: 6px 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .req-note.is-mismatch { color: var(--warn); font-weight: 600; }
+    .req-note.is-workday { color: var(--done); }
 
     .req-section { margin-top: 32px; }
     .req-section-title { font-size: 13px !important; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
@@ -289,11 +298,11 @@
     <section class="input-card" id="input-card" aria-labelledby="input-heading">
       <h2 id="input-heading">Add your courses from Workday</h2>
       <ol>
-        <li>In Workday, open Academic Record, then Academic Progress (or Academic History).</li>
+        <li>In Workday, open Academic Record, then Academic Progress.</li>
         <li>If a table has several pages, set it to show all rows.</li>
         <li>Select all (Ctrl/⌘-A), copy, and paste below.</li>
       </ol>
-      <textarea id="workday-input" spellcheck="false" placeholder="Paste Workday Academic Progress or Academic History here"></textarea>
+      <textarea id="workday-input" spellcheck="false" placeholder="Paste Workday Academic Progress here"></textarea>
       <div class="drop-zone" id="drop-zone">
         <div class="drop-text">
           <span>Or drop your Academic Progress export (.xlsx) from Workday here</span>

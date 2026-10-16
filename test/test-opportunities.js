@@ -183,13 +183,13 @@ describe('generic opportunity verifier', () => {
   it('all "satisfied" categories have a real, actionable opportunity (empty transcript)', async (t) => {
     // With no courses taken, no category should be "satisfied"
     const analysis = analyze(categories, []);
-    verifyOpportunities(analysis, categories, [], t);
+    await verifyOpportunities(analysis, categories, [], t);
   });
 
   it('verify opportunities with Humanities satisfied', async (t) => {
     const transcript = [makeCourse('HIST 152', 4)];
     const analysis = analyze(categories, transcript);
-    verifyOpportunities(analysis, categories, transcript, t);
+    await verifyOpportunities(analysis, categories, transcript, t);
   });
 
   it('verify opportunities with multiple K&U categories partially filled', async (t) => {
@@ -199,7 +199,7 @@ describe('generic opportunity verifier', () => {
       makeCourse('ECON 221', 4),   // S&B Sciences: satisfied
     ];
     const analysis = analyze(categories, transcript);
-    verifyOpportunities(analysis, categories, transcript, t);
+    await verifyOpportunities(analysis, categories, transcript, t);
   });
 
   it('verify: no false opportunities when all K&U are complete', async (t) => {
@@ -218,6 +218,6 @@ describe('generic opportunity verifier', () => {
     assert.equal(satisfied.length, 0,
       `Expected no satisfied categories, got: ${satisfied.map(r => r.name).join(', ')}`);
     // Run verifier anyway — it should find nothing to verify
-    verifyOpportunities(analysis, categories, transcript, t);
+    await verifyOpportunities(analysis, categories, transcript, t);
   });
 });

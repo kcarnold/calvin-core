@@ -1,4 +1,5 @@
 import { slugify, KU_NAMES } from './core.js';
+import { bugReport } from './app-render.js';
 
 const COLORS = {
   taken: '#2d8a4e', takenBg: '#e6f7ed',
@@ -12,7 +13,7 @@ export function clearRenderedState() {
   ['ca-styles', 'ca-toc-styles'].forEach(id => {
     document.getElementById(id)?.remove();
   });
-  document.querySelectorAll('.ca-legend,.ca-summary-panel,.ca-badge,.ca-hours-note,#ca-toc,.ca-disclaimer,.ca-ku-warning,.ca-transcript-section').forEach(e => {
+  document.querySelectorAll('.ca-legend,.ca-summary-panel,.ca-badge,.ca-hours-note,#ca-toc,.ca-disclaimer,.ca-ku-warning,.ca-mismatch,.ca-transcript-section').forEach(e => {
     e.remove();
   });
   document.querySelectorAll('[class*="ca-course-"],[class*="ca-category-"]').forEach(e => {
@@ -36,7 +37,8 @@ function attachPlanToggle(li, courseCode, isPlanned, onTogglePlanned) {
   li.appendChild(btn);
 }
 
-export function render({ results, kuSummary, transcript, plannedCourses, warnings = [] }, options = {}) {
+export function render(analysis, options = {}) {
+  const { results, kuSummary, transcript, plannedCourses, warnings = [], workdayChecks = [] } = analysis;
   const onTogglePlanned = options.onTogglePlanned;
   clearRenderedState();
 
@@ -118,6 +120,9 @@ export function render({ results, kuSummary, transcript, plannedCourses, warning
     .ca-ku-warning { font-size:13px; color:#7c2d12; background:#fff1e6; border:1px solid #f0a868;
       border-radius:6px; padding:8px 12px; margin:10px 0 6px 0;
       font-family:system-ui,-apple-system,sans-serif; line-height:1.5; }
+    .ca-mismatch { font-size:13px; color:#7f1d1d; background:#fee2e2; border:2px solid #b91c1c; border-radius:6px; padding:10px 14px; margin:10px 0; }
+    .ca-mismatch p { margin:8px 0 4px; font-weight:600; }
+    .ca-mismatch textarea { width:100%; box-sizing:border-box; font:12px/1.4 monospace; }
     .ca-ku-warning ul { margin:4px 0 4px 18px; padding:0; }
     .ca-hours-note.ca-assumed-note { color:#7c2d12; background:#fff1e6; }
     .ca-transcript-section { font-family:system-ui,-apple-system,sans-serif; margin:24px 0 16px 0; }
@@ -292,6 +297,28 @@ export function render({ results, kuSummary, transcript, plannedCourses, warning
     outro.textContent = 'Check Academic Progress in Workday or ask the Registrar where these count.';
     warning.append(intro, list, outro);
     firstCore.parentElement.insertBefore(warning, firstCore);
+  }
+
+  // Workday and this tool disagree: one is wrong. Loud, with a report to send.
+  const mismatches = workdayChecks.filter(c => c.kind === 'mismatch');
+  if (mismatches.length > 0) {
+    const box = document.createElement('div');
+    box.className = 'ca-mismatch';
+    box.setAttribute('role', 'alert');
+    const intro = document.createElement('strong');
+    intro.textContent = '\u26D4 Workday disagrees with this tool. Go with Workday. This is probably a bug: please copy each report below and send it to the developer (it lists your courses, not your name or ID).';
+    box.appendChild(intro);
+    for (const m of mismatches) {
+      const line = document.createElement('p');
+      line.textContent = (m.requirement === 'K&U' ? 'Knowledge and Understanding' : m.requirement)
+        + ': Workday says ' + m.workdayStatus + '; this tool says ' + m.ourStatus + '.';
+      const area = document.createElement('textarea');
+      area.readOnly = true;
+      area.rows = 8;
+      area.value = bugReport(analysis, m, { source: options.source });
+      box.append(line, area);
+    }
+    firstCore.parentElement.insertBefore(box, firstCore);
   }
 
   // ===== FLOATING TOC =====

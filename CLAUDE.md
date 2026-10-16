@@ -38,6 +38,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
 - `test/test-xlsx.js` — `readXlsxRows` + `parseProgressRows` on `test/fixtures/academic-progress-sample.xlsx` (scrubbed via `test/scrub-progress-xlsx.py`) and generated workbooks.
 - `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
+- `test/test-workday-status.js` — Non-passing grades, repeats, Workday Status checks (accepted/mismatch), the sample export agreeing with Workday, and their rendering.
 - `test/test-opportunities.js` — Opportunity verification: proves "satisfied" status = real actionable opportunity.
 - `test/run-test.js` — Integration test harness: full pipeline with real transcripts + catalog HTML.
 - `test/catalog-json.js` — `CATALOG_INFO`, `buildCatalogJson(html, catoid)` (strips DOM fields; adds coid, coreId, alternatives, kuAggregate), `buildUnion`.
@@ -100,7 +101,16 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 
 - `WORKDAY_REQUIREMENTS` / `workdayRequirementCategory` in `core.js` map Academic Progress requirement names ("Global Regions and Cultures Core") to catalog names. `test-xlsx.js` checks every core requirement in the sample export maps.
 - A course Workday lists under a requirement counts toward it (though doesn't necessarily satisfy it). Pick-one requirements count such a course even if no catalog lists it (overrides, section-specific tags): `isFromWorkday` annotation, no `element`, shown as a labeled `.extra-course` (provenance `workday`). Hour-range requirements (K&U) can't place it in a sub-discipline, so they get a `warnings` entry instead.
-- Not yet read: the .xlsx Status column. It could cross-check our status against Workday's, if that proves worth the complexity.
+- Workday's Status per requirement (the .xlsx Status column; in a paste, the line after the requirement name) comes back from both progress parsers as `workdayStatus` (requirement → `{ status, items }`, items verbatim). `analyze()` compares Satisfied / Not Satisfied with its own result (`workdayChecks`; "In Progress" isn't compared). Workday Satisfied by something that isn't a course (`Military - 05/01/2025`, nothing listed) → `accepted`: the result becomes complete with `workdaySatisfied`, shown as "Satisfied in Workday" with the items verbatim. Any other disagreement → `mismatch`: a loud box first on the page with a copyable `bugReport()` (app-render.js; course list, no name or ID). Both front ends.
+
+## Grades and repeats
+
+- `NON_PASSING_GRADES` (F, W, WF, WP, I, NC, AU) count toward nothing (`analysis.notCounted`, listed in the warning box and the course table). Resolved incompletes (IA, IB, ...) and CR count.
+- A repeated course's later attempt wins: by academic period in Academic Progress, else the later listing.
+
+## Academic History
+
+- Pasting Academic History is still accepted but not supported: it lacks transfer/in-progress labels and Workday's requirement listings. The app and launcher warn; instructions point to Academic Progress.
 
 ## Requirement Rules
 
@@ -124,7 +134,7 @@ npm run generate-catalog -- 25  # re-generate catalog-categories-25.json from ca
 ### Transcript course statuses (from `parseTranscript()`)
 - `completed` — normal graded/passed course.
 - `in-progress` — course marked "(In Progress)" in Workday; included in `allActiveSet`, so it counts for both pick-one and hour-range requirements (same as completed).
-- `transfer` — transfer credit, marked "(Transfer Credit)"; treated like `completed` for requirement matching.
+- `transfer` — transfer credit, marked "(Transfer Credit)" (Academic Progress only); treated like `completed` for requirement matching.
 - `exemption` — special entry (e.g., "World Languages I Exemption"); satisfies a named category without contributing hours.
 
 ## Design Decisions

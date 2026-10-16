@@ -159,14 +159,14 @@ function catalogNoteHtml(current) {
 function runAnnotation(text) {
   const normalized = (text || '').trim();
   if (normalized.length === 0) {
-    setStatus('Paste your Workday Academic History or Academic Progress to see your core opportunities.', null);
+    setStatus('Paste your Workday Academic Progress to see your core opportunities.', null);
     return;
   }
 
   const format = detectInputFormat(normalized);
   if (format === 'progress') {
-    const { courses, overrides } = parseProgress(normalized);
-    showAnalysis({ format, courses, overrides });
+    const { courses, overrides, workdayStatus } = parseProgress(normalized);
+    showAnalysis({ format, courses, overrides, workdayStatus });
   } else {
     showAnalysis({ format, courses: parseTranscript(normalized) });
   }
@@ -177,8 +177,8 @@ async function runExport(file) {
   setStatus(`Reading ${file.name}…`, null);
   let input;
   try {
-    const { courses, overrides } = parseProgressRows(readXlsxRows(await file.arrayBuffer()));
-    input = { format: 'progress-xlsx', name: file.name, courses, overrides };
+    const { courses, overrides, workdayStatus } = parseProgressRows(readXlsxRows(await file.arrayBuffer()));
+    input = { format: 'progress-xlsx', name: file.name, courses, overrides, workdayStatus };
   } catch (err) {
     clearRenderedState();
     setStatus(`Couldn’t read ${file.name}: ${err.message}. Choose the .xlsx file Workday exports from Academic Progress.`, 'error');
@@ -189,7 +189,7 @@ async function runExport(file) {
 }
 
 function showAnalysis(input) {
-  const { format, courses, overrides } = input;
+  const { format, courses, overrides, workdayStatus } = input;
   if (courses.length === 0) {
     clearRenderedState();
     setStatus(input.name
@@ -200,12 +200,14 @@ function showAnalysis(input) {
 
   const categories = parseCoreProgram();
   const analysis = analyze(categories, courses, {
-    plannedCourses: Array.from(plannedCourses), overrides, extraCourses: KNOWN_COURSE_CATEGORIES,
+    plannedCourses: Array.from(plannedCourses), overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES,
   });
   const appliedPlanned = new Set(analysis.plannedCourses || []);
   plannedCourses.clear();
   for (const code of appliedPlanned) plannedCourses.add(code);
   render(analysis, {
+    source: { progress: 'Academic Progress (pasted, catalog page)', 'progress-xlsx': 'Academic Progress export (catalog page)',
+      transcript: 'Academic History (pasted, catalog page)' }[format],
     onTogglePlanned: (courseCode) => {
       if (plannedCourses.has(courseCode)) plannedCourses.delete(courseCode);
       else plannedCourses.add(courseCode);
@@ -220,8 +222,11 @@ function showAnalysis(input) {
   ];
   if (inProgressCount > 0) statusParts.push(inProgressCount + ' in-progress');
   if (plannedCourses.size > 0) statusParts.push(plannedCourses.size + ' planned');
+  const mismatches = analysis.workdayChecks.filter(c => c.kind === 'mismatch').length;
+  if (mismatches > 0) statusParts.push('Workday disagrees on ' + mismatches + ' requirement(s): see the red box below');
+  if (format === 'transcript') statusParts.push('Academic History isn\u2019t fully supported; use Academic Progress if you can');
   if (analysis.warnings.length > 0) statusParts.push(analysis.warnings.length + ' course(s) Workday counts that we couldn\u2019t match (see warning below)');
-  setStatus(statusParts.join(', ') + '.', 'success');
+  setStatus(statusParts.join(', ') + '.', mismatches > 0 ? 'error' : 'success');
   console.log('[Core Annotator]', courses.length, 'courses (' + format + '):', courses.filter(c => c.code).map(c => c.code + '(' + c.hours + 'h)'));
   console.log('[Core Annotator] K&U:', analysis.kuSummary);
   if (inProgressCount > 0) console.log('[Core Annotator] In-progress:', courses.filter(c => c.status === 'in-progress').map(c => c.code));

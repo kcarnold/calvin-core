@@ -288,7 +288,7 @@ export function scenario(name, opts) {
  * @param {Array} transcript - The transcript used to produce the analysis
  * @param {import('node:test').TestContext} t - node:test context
  */
-export function verifyOpportunities(analysis, categories, transcript, t) {
+export async function verifyOpportunities(analysis, categories, transcript, t) {
   for (const r of analysis.results) {
     if (r.status !== 'satisfied') continue;
 
@@ -300,14 +300,14 @@ export function verifyOpportunities(analysis, categories, transcript, t) {
     );
 
     if (!candidate) {
-      t.test(`${r.name}: satisfied but no untaken course in non-maxed discipline (BUG?)`, () => {
+      await t.test(`${r.name}: satisfied but no untaken course in non-maxed discipline (BUG?)`, () => {
         assert.fail(`${r.name} is "satisfied" but has no actionable opportunity`);
       });
       continue;
     }
 
     for (const testHours of [4, 2]) {
-      t.test(`${r.name}: adding ${candidate.code} (${testHours}h) should improve`, () => {
+      await t.test(`${r.name}: adding ${candidate.code} (${testHours}h) should improve`, () => {
         const newTranscript = [...transcript, makeCourse(candidate.code, testHours)];
         const newAnalysis = analyze(categories, newTranscript);
         const newR = newAnalysis.results.find(x => x.name === r.name);
