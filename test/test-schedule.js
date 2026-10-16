@@ -24,7 +24,7 @@ describe('schedule snapshot', () => {
     assert.deepEqual(schedule, buildScheduleJson(raw, titles));
   });
 
-  it('lists no closed or CPI sections, and nothing from hours-only terms', () => {
+  it('lists no closed, CPI, or Handlon sections, and nothing from hours-only terms', () => {
     const shown = new Set(schedule._meta.terms.filter(t => t.shown).map(t => t.term));
     let n = 0;
     for (const [code, byTerm] of Object.entries(schedule.offerings)) {
@@ -35,6 +35,7 @@ describe('schedule snapshot', () => {
           const rows = raw[term].filter(r => `${r.Subject_RefID} ${r.Crs_Number}` === sectionCode && r.Sec_Number === s.section);
           assert.ok(rows.length, `${sectionCode}-${s.section} in ${term}`);
           assert.ok(rows.some(r => r.Status !== 'Closed'), `${sectionCode}-${s.section} is closed`);
+          assert.ok(rows.some(r => !/Handlon/.test(r.Campus || '')), `${sectionCode}-${s.section} is at Handlon`);
           assert.notEqual(s.section, 'CPI');
           n++;
         }
