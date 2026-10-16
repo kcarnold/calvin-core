@@ -21,6 +21,13 @@ export function catalogLabel(meta) {
 }
 
 const fmtHours = n => String(+Number(n).toFixed(2));
+const fmtRange = h => h.min === h.max ? fmtHours(h.min) : `${fmtHours(h.min)}–${fmtHours(h.max)}`;
+
+// "2026-10-14" → "Oct 14, 2026"
+function fmtDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}, ${y}`;
+}
 
 // Tiny element builder: h('div', { class: 'x', onclick }, child, 'text', ...)
 function builder(doc) {
@@ -119,12 +126,16 @@ export function bugReport(analysis, check, context = {}) {
 //   openLists: Map slug → bool          remembered <details> state
 //   format, source                      input format ('transcript', ...) and its label, for notices and bug reports
 //   testCase                            de-identified test case text (src/test-case.js), shown at the bottom
+//   schedule                            schedule/sections.json: course hours and listed sections, or null
+//   projection                          analyze() result counting planned courses, or null
 //   onTogglePlanned(code), onListToggle(slug, open)
 // }
 export function renderApp(root, state) {
   const doc = root.ownerDocument;
   const h = builder(doc);
-  const { catalog, catalogs = [catalog], analysis, openLists = new Map(), source, testCase } = state;
+  const { catalog, catalogs = [catalog], analysis, openLists = new Map(), source, testCase, schedule, projection } = state;
+  const shownTerms = (schedule?._meta.terms || []).filter(t => t.shown);
+  const projectedByIndex = new Map((projection?.results || []).map(r => [r.coreIndex, r]));
   const mismatchesFor = name => (analysis?.workdayChecks || []).filter(c => c.kind === 'mismatch' && c.requirement === name);
   const meta = catalog._meta;
   const resultsByIndex = new Map((analysis?.results || []).map(r => [r.coreIndex, r]));
@@ -178,8 +189,12 @@ export function renderApp(root, state) {
         rowCls += ' is-active';
         flags.push(h('span', { class: 'chip chip-taken' },
           (a.isTransfer ? 'Transfer' : 'Taken') + (a.grade && !a.isTransfer ? ` · ${a.grade}` : '') + ` · ${fmtHours(a.hours)} hrs`));
-      } else if (a.isPlanned) { rowCls += ' is-planned'; flags.push(h('span', { class: 'chip chip-planned' }, 'Planned')); }
+      } else if (a.isPlanned) { rowCls += ' is-planned'; flags.push(h('span', { class: 'chip chip-planned' }, plannedLabel(c.code))); }
       else if (a.isMaxedDiscipline) { rowCls += ' is-maxed'; flags.push(h('span', { class: 'chip chip-muted' }, 'Discipline max reached')); }
+    }
+    const hrs = schedule?.hours[c.code];
+    if (hrs && !(a && (a.isTaken || a.isInProgress || a.isPlanned))) {
+      flags.unshift(h('span', { class: 'chip chip-hours', title: `Hours in the ${termLabel(hrs.term)} schedule` }, `${fmtRange(hrs)} hrs`));
     }
     const others = a ? a.otherCategories || [] : (listedUnder.get(c.code) || []).filter(n => n !== cat.name);
     if (others.length) {
@@ -196,7 +211,51 @@ export function renderApp(root, state) {
         title: 'Course description in the official catalog' }, c.code),
       h('span', { class: 'course-title' }, c.title),
       flags.length ? h('span', { class: 'course-flags' }, flags) : null,
-      planBtn);
+      planBtn,
+      active ? null : offeredSections(cat, c.code));
+  }
+
+  const termLabel = term => schedule?._meta.terms.find(t => t.term === term)?.label || term;
+
+  function plannedLabel(code) {
+    const hrs = schedule?.hours[code];
+    if (!hrs) return 'Planned · hours unknown, not counted toward hours';
+    return hrs.min === hrs.max ? `Planned · ${fmtHours(hrs.min)} hrs` : `Planned · ${fmtRange(hrs)} hrs, counting ${fmtHours(hrs.min)}`;
+  }
+
+  // Sections listed for the shown terms (closed and CPI sections left out;
+  // whether a section is full isn't shown).
+  function offeredSections(cat, code) {
+    const offered = schedule?.offerings[code];
+    const terms = shownTerms.filter(t => offered?.[t.term]);
+    if (terms.length === 0) return null;
+    const key = `sections:${cat.slug}:${code}`;
+    const count = list => list.filter(s => !s.lab).length || list.length;
+    const label = terms.map(t => {
+      const n = count(offered[t.term]);
+      return `${t.label}: ${n} section${n === 1 ? '' : 's'}`;
+    }).join(' · ');
+    return h('details', { class: 'offered', open: openLists.get(key) || null,
+      ontoggle: e => state.onListToggle?.(key, e.target.open) },
+      h('summary', {}, label),
+      terms.map(t => {
+        const list = offered[t.term];
+        const lectures = list.filter(s => !s.lab);
+        const labs = list.filter(s => s.lab);
+        return h('div', { class: 'offered-term' },
+          h('p', { class: 'offered-term-name' }, t.label + (labs.length && lectures.length ? ' (take one lecture section and one lab section; the letters needn’t match)' : '')),
+          lectures.length ? sectionList(code, lectures) : null,
+          labs.length ? [h('p', { class: 'offered-kind' }, 'Lab'), sectionList(code + 'L', labs)] : null);
+      }));
+  }
+
+  function sectionList(code, sections) {
+    return h('ul', { class: 'section-list' }, sections.map(s => h('li', { class: 'section' },
+      h('strong', {}, `${code}-${s.section}`),
+      ' ', [s.meets || (s.delivery === 'Online' ? null : 'Time TBA'), s.instructors,
+        s.delivery, s.offCampus ? 'Off campus' : null, s.hours != null ? `${s.hours} hrs` : null].filter(Boolean).join(' · '),
+      s.period ? h('span', { class: 'section-period' }, s.period) : null,
+      s.title ? h('span', { class: 'section-title' }, s.title) : null)));
   }
 
   function courseList(cat, r) {
@@ -255,12 +314,22 @@ export function renderApp(root, state) {
     if (!r) return h('p', { class: 'req-hours' }, parts.join(', ') + '.');
     let text = `You have ${fmtHours(r.hoursEarned)} hrs here. ` + parts.join(', ') + '.';
     if (r.hoursEffective < r.hoursEarned) text += ` Only ${fmtHours(r.hoursEffective)} count toward the K&U total.`;
+    const p = projectedByIndex.get(cat.coreIndex);
+    if (p && p.hoursEarned !== r.hoursEarned) text += ` With your plan: ${fmtHours(p.hoursEarned)} hrs.`;
     return h('p', { class: 'req-hours' }, text);
+  }
+
+  // The status counting planned courses, when it differs from the actual one.
+  function plannedStatus(cat, status) {
+    if (!projection) return null;
+    const p = requirementStatus(cat, projectedByIndex.get(cat.coreIndex), projection);
+    return p && p.text !== status?.text ? p : null;
   }
 
   function requirementCard(cat) {
     const r = resultsByIndex.get(cat.coreIndex);
     const status = requirementStatus(cat, r, analysis);
+    const withPlan = plannedStatus(cat, status);
     const notes = [];
     if (cat.alternatives) {
       notes.push('Read as: ' + cat.alternatives.map(alt => alt.join(' and ')).join(', or ') + '.');
@@ -275,7 +344,8 @@ export function renderApp(root, state) {
       h('header', { class: 'req-header' },
         h('h3', { class: 'req-name' }, cat.name),
         cat.type === 'tag' ? h('span', { class: 'tag-label' }, 'Overlaps other requirements') : null,
-        status ? h('span', { class: 'status-pill status-' + status.cls }, status.text) : null),
+        status ? h('span', { class: 'status-pill status-' + status.cls }, status.text) : null,
+        withPlan ? h('span', { class: 'status-pill status-plan' }, 'With plan: ' + withPlan.text) : null),
       wording(cat.instructions),
       notes.map(n => h('p', { class: 'req-note' }, n)),
       hoursLine(cat, r),
@@ -306,12 +376,21 @@ export function renderApp(root, state) {
     }
     const ku = kuStatus(analysis);
     const countable = groups.flatMap(g => g.items).filter(({ cat }) => !KU_NAMES.includes(cat.name));
-    const done = countable.filter(({ r }) => r.status === 'complete' || r.isExempt).length + (ku?.met ? 1 : 0);
+    const isDone = r => r && (r.status === 'complete' || r.isExempt);
+    const done = countable.filter(({ r }) => isDone(r)).length + (ku?.met ? 1 : 0);
     const total = countable.length + (ku ? 1 : 0);
+    let planLine = null;
+    if (projection) {
+      const pku = kuStatus(projection);
+      const pdone = countable.filter(({ cat }) => isDone(projectedByIndex.get(cat.coreIndex))).length + (pku?.met ? 1 : 0);
+      planLine = h('p', { class: 'summary-plan' }, `With your planned courses: ${pdone} of ${total} met`
+        + (pku && !ku?.met ? `, K&U ${fmtHours(pku.totalHours)} of ${pku.requiredHours} hrs in ${pku.categoriesUsed} of ${pku.requiredCategories} categories` : '') + '.');
+    }
 
     return h('section', { class: 'summary', 'aria-label': 'Summary' },
       h('h2', {}, `${done} of ${total} requirements met`),
       h('p', { class: 'summary-sub' }, 'By this tool’s reading of the catalog. Workday may differ.'),
+      planLine,
       groups.filter(g => g.items.length).map(g => h('div', { class: 'summary-group' },
         h('h3', {}, g.section.section),
         KU_NAMES.includes(g.items[0].cat.name) && ku ? kuMeter(ku) : null,
@@ -443,7 +522,11 @@ export function renderApp(root, state) {
       items.push(`A course listed under several requirements counts toward each of them (${codes}).`);
     }
     if (active.some(({ a }) => a.isInProgress)) items.push('In-progress courses are counted as if completed.');
-    if (analysis.plannedCourses?.length) items.push('Planned courses are shown but not counted.');
+    if (analysis.plannedCourses?.length) {
+      items.push(projection
+        ? 'Planned courses count only in the “With plan” results, with hours from the course schedule (the lowest, if a course’s hours vary).'
+        : 'Planned courses are shown but not counted.');
+    }
     if (items.length === 0) return null;
     return h('section', { class: 'callout' }, h('h2', {}, 'This result assumes'), h('ul', {}, items.map(t => h('li', {}, t))));
   }
@@ -491,8 +574,16 @@ export function renderApp(root, state) {
       } }, 'Copy test case'));
   }
 
+  // Where section lists and hours come from, and that they go stale.
+  function scheduleNote() {
+    if (!shownTerms.length) return null;
+    const terms = shownTerms.map(t => `${t.label} (as of ${fmtDate(t.savedAt)})`).join(' and ');
+    return h('p', { class: 'schedule-note' }, `Sections listed under courses are from the course schedule for ${terms}. `
+      + 'Sections get added, cancelled, and filled, so check Workday when you register. Section-specific tags (such as one section of a course tagged Diversity and Difference) aren’t shown.');
+  }
+
   const body = [];
-  body.push(historyNotice(), mismatches(), warnings(), summary(), assumptions());
+  body.push(historyNotice(), mismatches(), warnings(), summary(), assumptions(), scheduleNote());
   for (const cat of catalog.categories) {
     if (cat.type === 'section-header') {
       body.push(h('section', { class: 'req-section', id: cat.slug, dataset: { coreIndex: cat.coreIndex } },
