@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import {
   scenario, loadCategories, makeCourse, verifyOpportunities, getResult,
 } from './helpers.js';
-import { analyze } from '../src/core.js';
+import { analyze } from './recorder.js';
 
 const categories = loadCategories();
 

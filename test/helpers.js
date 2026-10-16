@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { analyze } from '../src/core.js';
+import { analyze } from './recorder.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // ---- Catalog loader (cached per catoid) ----

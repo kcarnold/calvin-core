@@ -10,7 +10,8 @@ import fs from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { readXlsxRows } from '../src/xlsx.js';
-import { parseProgressRows, analyze, workdayRequirementCategory } from '../src/core.js';
+import { parseProgressRows, workdayRequirementCategory } from '../src/core.js';
+import { analyze } from './recorder.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { loadCategories, getResult } from './helpers.js';
 

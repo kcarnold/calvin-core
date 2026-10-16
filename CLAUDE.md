@@ -38,6 +38,8 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
 - `test/test-xlsx.js` — `readXlsxRows` + `parseProgressRows` on `test/fixtures/academic-progress-sample.xlsx` (scrubbed via `test/scrub-progress-xlsx.py`) and generated workbooks.
 - `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
+- `test/recorder.js` — `analyze()` for the logic tests; with `CORE_TEST_REPORT=<dir>` it records each call (test name, inputs, outcome). Logic test files import `analyze` from here, not core.js.
+- `test/build-test-report.js` — runs the logic tests recording, writes `docs/test-cases.html` (every case in plain language, for the registrar; deployed with the site). Part of `npm run build`; also `npm run test-report`.
 - `test/test-workday-status.js` — Non-passing grades, repeats, Workday Status checks (accepted/mismatch), the sample export agreeing with Workday, and their rendering.
 - `test/test-opportunities.js` — Opportunity verification: proves "satisfied" status = real actionable opportunity.
 - `test/run-test.js` — Integration test harness: full pipeline with real transcripts + catalog HTML.
@@ -51,7 +53,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 
 ```sh
 npm install
-npm run build          # → docs/app.js, dist/extension.js, dist/bookmarklet.js, docs/bookmarklet.js
+npm run build          # → docs/app.js, dist/extension.js, dist/bookmarklet.js, docs/bookmarklet.js, docs/test-cases.html (runs the logic tests)
 npm test               # unit tests (node:test) + integration tests
 npm run test:unit      # parsing, logic, opportunities, catalog claims/snapshot, app fidelity
 npm run test:integration  # legacy harness with real transcript snapshots

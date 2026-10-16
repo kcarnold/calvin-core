@@ -9,7 +9,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scenario, loadCategories, makeCourse, makeExemption, assertStatus, assertKU, getResult } from './helpers.js';
-import { analyze, isTransferExcluded, workdayRequirementCategory } from '../src/core.js';
+import { isTransferExcluded, workdayRequirementCategory } from '../src/core.js';
+import { analyze } from './recorder.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 
 // ---- Pick-one requirements ----
