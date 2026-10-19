@@ -24,7 +24,7 @@ describe('schedule snapshot', () => {
     assert.deepEqual(schedule, buildScheduleJson(raw, titles));
   });
 
-  it('lists no CPI or Handlon sections, and nothing from hours-only terms', () => {
+  it('lists no CPI or Handlon sections, and nothing from terms not shown', () => {
     const shown = new Set(schedule._meta.terms.filter(t => t.shown).map(t => t.term));
     let n = 0;
     for (const [code, byTerm] of Object.entries(schedule.offerings)) {
@@ -57,7 +57,7 @@ describe('schedule snapshot', () => {
     assert.ok(schedule.offerings['MUSC 171']['27SP'].every(s => s.hours != null));
   });
 
-  it('hours come from hours-only terms too', () => {
+  it('hours come from terms not shown too', () => {
     const fallOnly = Object.entries(schedule.hours).filter(([, h]) => h.term === '26FA').map(([c]) => c);
     assert.ok(fallOnly.length > 0);
     for (const code of fallOnly) assert.ok(!schedule.offerings[code]?.['26FA'], code);
