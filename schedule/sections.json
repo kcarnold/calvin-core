@@ -708,11 +708,6 @@
    "max": 4,
    "term": "27SP"
   },
-  "IDIS 310": {
-   "min": 4,
-   "max": 4,
-   "term": "27SP"
-  },
   "IDIS 312": {
    "min": 4,
    "max": 4,
@@ -1411,6 +1406,11 @@
      "section": "B",
      "meets": "MW 12:15–1:55 PM",
      "instructors": "Annie Bueno"
+    },
+    {
+     "section": "C",
+     "meets": "TTH 12:15–1:55 PM",
+     "instructors": "Christine Vermeer"
     }
    ]
   },
@@ -2744,15 +2744,6 @@
     }
    ]
   },
-  "IDIS 310": {
-   "27SP": [
-    {
-     "section": "A",
-     "meets": "MWF 2:45–3:50 PM",
-     "instructors": null
-    }
-   ]
-  },
   "IDIS 312": {
    "27SP": [
     {
@@ -3432,12 +3423,12 @@
     {
      "section": "A",
      "meets": "MWF 8:00–9:05 AM",
-     "instructors": null
+     "instructors": "Loren Haarsma"
     },
     {
      "section": "B",
      "meets": "MWF 11:00 AM–12:05 PM",
-     "instructors": "Loren Haarsma"
+     "instructors": "Josh Ernst"
     },
     {
      "section": "C",
@@ -3465,8 +3456,8 @@
     {
      "section": "D",
      "lab": true,
-     "meets": "TH 11:15 AM–2:05 PM",
-     "instructors": null
+     "meets": "W 7:00–9:50 PM",
+     "instructors": "Kristin Visser"
     },
     {
      "section": "E",
