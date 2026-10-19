@@ -14,7 +14,7 @@
 // rarely change). Update savedAt when re-downloading a term.
 export const SCHEDULE_INFO = {
   '26FA': { label: 'Fall 2026', savedAt: '2026-10-16', shown: false },
-  '27SP': { label: 'Spring 2027', savedAt: '2026-10-14', shown: true },
+  '27SP': { label: 'Spring 2027', savedAt: '2026-10-19', shown: true },
   '27SU': { label: 'Summer 2027', savedAt: '2026-10-16', shown: true },
 };
 
