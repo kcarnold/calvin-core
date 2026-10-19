@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      # docs/ is what GitHub Pages serves; fail if it wasn't rebuilt.
+      - name: Check the committed build is current
+        run: git diff --exit-code docs/ || (echo "::error::docs/ is stale; run npm run build and commit" && exit 1)
