@@ -223,7 +223,7 @@ export function renderApp(root, state) {
     return hrs.min === hrs.max ? `Planned · ${fmtHours(hrs.min)} hrs` : `Planned · ${fmtRange(hrs)} hrs, counting ${fmtHours(hrs.min)}`;
   }
 
-  // Sections listed for the shown terms (closed, CPI, and Handlon sections left out;
+  // Sections listed for the shown terms (CPI and Handlon sections left out;
   // whether a section is full isn't shown).
   function offeredSections(cat, code) {
     const offered = schedule?.offerings[code];

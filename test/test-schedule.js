@@ -24,7 +24,7 @@ describe('schedule snapshot', () => {
     assert.deepEqual(schedule, buildScheduleJson(raw, titles));
   });
 
-  it('lists no closed, CPI, or Handlon sections, and nothing from hours-only terms', () => {
+  it('lists no CPI or Handlon sections, and nothing from hours-only terms', () => {
     const shown = new Set(schedule._meta.terms.filter(t => t.shown).map(t => t.term));
     let n = 0;
     for (const [code, byTerm] of Object.entries(schedule.offerings)) {
@@ -34,7 +34,6 @@ describe('schedule snapshot', () => {
           const sectionCode = s.lab && !(code + 'L' in titles) ? code + 'L' : code;
           const rows = raw[term].filter(r => `${r.Subject_RefID} ${r.Crs_Number}` === sectionCode && r.Sec_Number === s.section);
           assert.ok(rows.length, `${sectionCode}-${s.section} in ${term}`);
-          assert.ok(rows.some(r => r.Status !== 'Closed'), `${sectionCode}-${s.section} is closed`);
           assert.ok(rows.some(r => !/Handlon/.test(r.Campus || '')), `${sectionCode}-${s.section} is at Handlon`);
           assert.notEqual(s.section, 'CPI');
           n++;
@@ -43,7 +42,7 @@ describe('schedule snapshot', () => {
     }
     assert.ok(n > 100, `only ${n} sections`);
     // Status itself never reaches the app.
-    assert.doesNotMatch(readFileSync(SECTIONS_OUTPUT, 'utf-8'), /Waitlist|"Open"|"Closed"|EnrollCap/);
+    assert.doesNotMatch(readFileSync(SECTIONS_OUTPUT, 'utf-8'), /Waitlist|"Open"|EnrollCap/);
   });
 
   it('a course’s hours include its lab’s', () => {
