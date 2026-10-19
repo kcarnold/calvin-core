@@ -11,7 +11,7 @@ import { JSDOM } from 'jsdom';
 import { analyze, plannedEntries } from '../src/core.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { renderApp } from '../src/app-render.js';
-import { buildScheduleJson } from './schedule-json.js';
+import { buildScheduleJson, SCHEDULE_INFO } from './schedule-json.js';
 import { loadScheduleInputs, SECTIONS_OUTPUT } from './generate-schedule-json.js';
 import { loadCategories, makeCourse } from './helpers.js';
 
@@ -125,7 +125,9 @@ describe('planned courses with schedule hours', () => {
     assert.ok(sections.every(s => !/CPI|Open|Closed|Waitlist/.test(s)), sections.join('\n'));
     const chem = row(card(root, 'Natural Sciences'), 'CHEM 101');
     if (chem) assert.match(norm(chem.querySelector('.offered').textContent), /Lab/);
-    assert.match(norm(root.querySelector('.schedule-note').textContent), /Spring 2027 \(as of Oct 14, 2026\) and Summer 2027 \(as of Oct 16, 2026\)/);
+    const fmt = iso => { const [y, m, d] = iso.split('-').map(Number); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${d}, ${y}`; };
+    const sp = SCHEDULE_INFO['27SP'], su = SCHEDULE_INFO['27SU'];
+    assert.match(norm(root.querySelector('.schedule-note').textContent), new RegExp(`Spring 2027 \\(as of ${fmt(sp.savedAt)}\\) and Summer 2027 \\(as of ${fmt(su.savedAt)}\\)`));
   });
 
   it('taken courses don’t list sections', () => {
