@@ -10,11 +10,11 @@ Supported catalogs (listed in `CATALOG_PAGES` in `src/ui.js` and `CATALOGS` in `
 
 **Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `ui.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to categories on the open page. Taken courses matched only via the union get `isFromOtherCatalog` annotations with no `element`; render lists them in a note on the block. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
 
-catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an empty 202. Save page HTML from a real browser into `catalog/catalog-<catoid>.html`, update `CATALOG_INFO` (savedAt; navoid for a new catalog) in `test/catalog-json.js`, and run `npm run generate-catalog -- <catoid>`. A new catalog also needs adding to `CATALOGS` in `src/app.js`.
+catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an empty 202. Save page HTML from a real browser into `catalog/catalog-<catoid>.html`, update `CATALOG_INFO` (savedAt; navoid for a new catalog) in `scripts/catalog-json.js`, and run `npm run generate-catalog -- <catoid>`. A new catalog also needs adding to `CATALOGS` in `src/app.js`.
 
 ## Course schedule (sections and hours)
 
-- `schedule/CourseSchedule-<term>.json`: Workday course-search exports, downloaded by hand once per term from the API behind https://sites.calvin.edu/courses/course-search.js (don't hit it repeatedly). `SCHEDULE_INFO` in `test/schedule-json.js` gives each term's label, savedAt, and `shown`. `npm run generate-schedule` → `schedule/sections.json` (bundled by the app; `test-schedule.js` checks it's a fresh generation).
+- `schedule/CourseSchedule-<term>.json`: Workday course-search exports, downloaded by hand once per term from the API behind https://sites.calvin.edu/courses/course-search.js (don't hit it repeatedly). `SCHEDULE_INFO` in `scripts/schedule-json.js` gives each term's label, savedAt, and `shown`. `npm run generate-schedule` → `schedule/sections.json` (bundled by the app; `test-schedule.js` checks it's a fresh generation).
 - `hours[code]` = `{ min, max, term }` from the latest term offering it, any section (closed too); a lecture includes its lab (`CHEM 101` 3 + `CHEM 101L` 1). Hours-only terms (`shown: false`, e.g. last fall's) only feed this: a 26FA section says nothing about 27FA.
 - `offerings[code][term]`: sections of shown terms, minus CPI and Handlon Campus. Closed sections are kept per registrar request. Status (open/waitlist/full) is never shown to students. Labs are listed under their lecture (`lab: true`).
 - App: course rows show hours and a collapsed section list (not for taken/in-progress courses). Courses with no listed sections still show; nothing is filtered by offering.
@@ -54,10 +54,10 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/test-workday-status.js` — Non-passing grades, repeats, Workday Status checks (accepted/mismatch), the sample export agreeing with Workday, and their rendering.
 - `test/test-opportunities.js` — Opportunity verification: proves "satisfied" status = real actionable opportunity.
 - `test/run-test.js` — Integration test harness: full pipeline with real transcripts + catalog HTML.
-- `test/catalog-json.js` — `CATALOG_INFO`, `buildCatalogJson(html, catoid)` (strips DOM fields; adds coid, coreId, alternatives, kuAggregate), `buildUnion`.
-- `test/generate-catalog-json.js` — `node test/generate-catalog-json.js <catoid>`: catalog/catalog-<catoid>.html → catalog/catalog-categories-<catoid>.json, then regenerates `src/catalog-courses.js` from all catalog JSONs. `loadCategories(catoid)` in helpers defaults to the newest catalog.
+- `scripts/catalog-json.js` — `CATALOG_INFO`, `buildCatalogJson(html, catoid)` (strips DOM fields; adds coid, coreId, alternatives, kuAggregate), `buildUnion`.
+- `scripts/generate-catalog-json.js` — `node scripts/generate-catalog-json.js <catoid>`: catalog/catalog-<catoid>.html → catalog/catalog-categories-<catoid>.json, then regenerates `src/catalog-courses.js` from all catalog JSONs. `loadCategories(catoid)` in helpers defaults to the newest catalog.
 - `catalog/` — Saved catalog HTML and generated JSON (public, committed). Integration snapshots use `catalog-24.html`.
-- `schedule/` — Saved course-search exports and generated `sections.json` (see "Course schedule"). `test/schedule-json.js` (`SCHEDULE_INFO`, `buildScheduleJson`), `test/generate-schedule-json.js`, `test/test-schedule.js`.
+- `schedule/` — Saved course-search exports and generated `sections.json` (see "Course schedule"). `scripts/schedule-json.js` (`SCHEDULE_INFO`, `buildScheduleJson`), `scripts/generate-schedule-json.js`, `test/test-schedule.js`.
 - `test/fixtures/` — Student data; private transcripts gitignored.
 - `script.js` — Legacy monolith (kept for reference).
 

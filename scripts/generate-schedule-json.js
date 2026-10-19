@@ -4,7 +4,7 @@
  * sections of the terms SCHEDULE_INFO marks as shown.
  *
  * Usage:
- *   node test/generate-schedule-json.js
+ *   node scripts/generate-schedule-json.js
  *
  * To add a term: save its export as schedule/CourseSchedule-<term>.json, add
  * it to SCHEDULE_INFO in schedule-json.js, and re-run. Re-run after
@@ -25,7 +25,7 @@ export function loadScheduleInputs() {
   for (const f of readdirSync(scheduleDir)) {
     const term = f.match(/^CourseSchedule-(\w+)\.json$/)?.[1];
     if (!term) continue;
-    if (!SCHEDULE_INFO[term]) throw new Error(`${f}: add ${term} to SCHEDULE_INFO in test/schedule-json.js`);
+    if (!SCHEDULE_INFO[term]) throw new Error(`${f}: add ${term} to SCHEDULE_INFO in scripts/schedule-json.js`);
     raw[term] = JSON.parse(readFileSync(join(scheduleDir, f), 'utf-8')).report;
   }
   const catalogs = readdirSync(catalogDir)

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCatalogJson, buildUnion } from './catalog-json.js';
+import { buildCatalogJson, buildUnion } from '../scripts/catalog-json.js';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const CATALOG_DIR = join(ROOT, 'catalog');

@@ -7,7 +7,7 @@
  * standalone app bundles it.
  *
  * Usage:
- *   node test/generate-catalog-json.js [catoid]   (default: 25)
+ *   node scripts/generate-catalog-json.js [catoid]   (default: 25)
  *
  * catalog-<catoid>.html must be saved from a browser: catalog.calvin.edu sits
  * behind a bot challenge, so plain fetch/curl gets an empty page. Update

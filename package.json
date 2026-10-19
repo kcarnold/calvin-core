@@ -8,8 +8,8 @@
     "test": "node --test test/test-*.js && node test/run-test.js",
     "test:unit": "node --test test/test-*.js",
     "test:integration": "node test/run-test.js",
-    "generate-catalog": "node test/generate-catalog-json.js",
-    "generate-schedule": "node test/generate-schedule-json.js",
+    "generate-catalog": "node scripts/generate-catalog-json.js",
+    "generate-schedule": "node scripts/generate-schedule-json.js",
     "test-report": "node test/build-test-report.js"
   },
   "devDependencies": {

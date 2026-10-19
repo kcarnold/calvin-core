@@ -11,8 +11,8 @@ import { JSDOM } from 'jsdom';
 import { analyze, plannedEntries } from '../src/core.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { renderApp } from '../src/app-render.js';
-import { buildScheduleJson, SCHEDULE_INFO } from './schedule-json.js';
-import { loadScheduleInputs, SECTIONS_OUTPUT } from './generate-schedule-json.js';
+import { buildScheduleJson, SCHEDULE_INFO } from '../scripts/schedule-json.js';
+import { loadScheduleInputs, SECTIONS_OUTPUT } from '../scripts/generate-schedule-json.js';
 import { loadCategories, makeCourse } from './helpers.js';
 
 const schedule = JSON.parse(readFileSync(SECTIONS_OUTPUT, 'utf-8'));
