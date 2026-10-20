@@ -1,14 +1,12 @@
 # Calvin Core Annotator
 
-Shows a student's core program status from pasted Workday data. Two front ends share `src/core.js`:
-- **Core Planner** (`docs/index.html` + `src/app.js`): standalone app; bundles the saved catalog JSON. Doesn't look like the catalog, on purpose. Keeps "Workday is the official record" hedging. Must stay entirely client-side (CSP `connect-src 'none'`; Workday .xlsx exports are read locally).
-- **Extension / bookmarklet** (`src/ui.js`, `src/render.js`): annotates the catalog's Core Program page in place.
+Shows a student's core program status from pasted Workday data. The **Core Planner** (`docs/index.html` + `src/app.js`) is the standalone app; it bundles the saved catalog JSON. Doesn't look like the catalog, on purpose. Keeps "Workday is the official record" hedging. Must stay entirely client-side (CSP `connect-src 'none'`; Workday .xlsx exports are read locally).
 
-Supported catalogs (listed in `CATALOG_PAGES` in `src/ui.js` and `CATALOGS` in `src/app.js`; students use the catalog for their entry year):
+Supported catalogs (listed in `CATALOGS` in `src/app.js`; students use the catalog for their entry year):
 - `catoid=25&navoid=803` — 2026–27. Adds the "Rhetoric in Disciplines" pick-one requirement.
 - `catoid=24&navoid=780` — 2025–26.
 
-**Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `ui.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to categories on the open page. Taken courses matched only via the union get `isFromOtherCatalog` annotations with no `element`; render lists them in a note on the block. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
+**Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `app.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to categories on the open page. Taken courses matched only via the union get `isFromOtherCatalog` annotations with no `element`; the app lists them in a note on the block. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
 
 catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an empty 202. Save page HTML from a real browser into `catalog/catalog-<catoid>.html`, update `CATALOG_INFO` (savedAt; navoid for a new catalog) in `scripts/catalog-json.js`, and run `npm run generate-catalog -- <catoid>`. A new catalog also needs adding to `CATALOGS` in `src/app.js`.
 
@@ -39,11 +37,8 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `src/app.js` — Standalone app entry: state, paste and .xlsx file handling, catalog picker. Imports `catalog/*.json`.
 - `src/app-render.js` — `renderApp(root, state)`: builds the app page from catalog JSON + optional analysis. Uses `root.ownerDocument`, so tests render it in jsdom. With `state.tocRoot`, also `renderToc`: the Contents sidebar (every section/requirement with the card's status icon; K&U section shows the aggregate). Sticky beside the content at ≥1200px, a floating "Contents" panel below; `app.js` highlights the entry in view.
 - `src/test-case.js` — `buildTestCase`/`formatTestCase`: the current record as a de-identified test case (grades → A/D/F keeping I, W, N, NR, CR; years shifted to start at 2000; non-core Workday requirements dropped), shown collapsed at the bottom of the app and used in bug reports. `expected` = the tool's result; advisors correct it and set `toolIsWrong` when the tool is wrong.
-- `src/render.js` — Catalog-page rendering: injects styles, badges, TOC, annotations. Browser-only.
 - `src/catalog-courses.js` — Generated: `KNOWN_COURSE_CATEGORIES`, union of course lists across `catalog-categories-*.json`. Don't edit by hand.
-- `src/ui.js` — Launcher panel, paste and .xlsx file handlers, `main()` entry. Browser-only.
-- `src/main.js` — Entry point (imports ui.js, calls `main()`).
-- `build.js` — esbuild: bundles `docs/app.js` (standalone app), `dist/extension.js`, `dist/bookmarklet.js`, `docs/bookmarklet.js`, `docs/overlap-view.js`.
+- `build.js` — esbuild: bundles `docs/app.js` (standalone app) and `docs/overlap-view.js`.
 - `test/helpers.js` — Fluent scenario API and generic opportunity verifier for unit tests.
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
 - `test/test-xlsx.js` — `readXlsxRows` + `parseProgressRows` on `test/fixtures/academic-progress-sample.xlsx` (scrubbed via `test/scrub-progress-xlsx.py`) and generated workbooks.
@@ -65,7 +60,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 
 ```sh
 npm install
-npm run build          # → docs/app.js, dist/extension.js, dist/bookmarklet.js, docs/bookmarklet.js, docs/test-cases.html (runs the logic tests)
+npm run build          # → docs/app.js, docs/overlap-view.js, docs/test-cases.html (runs the logic tests)
 npm test               # unit tests (node:test) + integration tests
 npm run test:unit      # parsing, logic, opportunities, catalog claims/snapshot, app fidelity
 npm run test:integration  # legacy harness with real transcript snapshots
@@ -110,13 +105,13 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 
 - AP/transfer core credit can arrive with no course number: `HIST CORE - AP/Transfer History Core (Transfer Credit)`. Parsers set `isPlaceholder` + `subject`.
 - `inferPlaceholderCategory` assumes it counts where ≥75% of that subject's K&U courses (page + union) sit, as that sub-discipline (HIST → Humanities/History, ARTS → Arts/Visual Arts). Ambiguous subjects (HNRS) aren't guessed. Assumed courses get `isAssumed` annotations with no `element`; render shows an orange "Assumed" note on the block.
-- `analysis.warnings` (`{ code, title, hours, requirement, reason }`, `requirement` a catalog name or `'K&U'`): placeholders we couldn't place, and courses Workday lists under a requirement that don't count toward it here (e.g. under K&U but in no K&U category). Render shows a warning box above the summary; the launcher status mentions the count.
+- `analysis.warnings` (`{ code, title, hours, requirement, reason }`, `requirement` a catalog name or `'K&U'`): placeholders we couldn't place, and courses Workday lists under a requirement that don't count toward it here (e.g. under K&U but in no K&U category). Render shows a warning box above the summary; the app status mentions the count.
 
 ## Workday Requirement Listings
 
 - `WORKDAY_REQUIREMENTS` / `workdayRequirementCategory` in `core.js` map Academic Progress requirement names ("Global Regions and Cultures Core") to catalog names. `test-xlsx.js` checks every core requirement in the sample export maps.
 - A course Workday lists under a requirement counts toward it (though doesn't necessarily satisfy it). Pick-one requirements count such a course even if no catalog lists it (overrides, section-specific tags): `isFromWorkday` annotation, no `element`, shown as a labeled `.extra-course` (provenance `workday`). Hour-range requirements (K&U) can't place it in a sub-discipline, so they get a `warnings` entry instead.
-- Workday's Status per requirement (the .xlsx Status column; in a paste, the line after the requirement name) comes back from both progress parsers as `workdayStatus` (requirement → `{ status, items }`, items verbatim). `analyze()` compares Satisfied / Not Satisfied with its own result (`workdayChecks`; "In Progress" isn't compared). Workday Satisfied by something that isn't a course (`Military - 05/01/2025`, nothing listed) → `accepted`: the result becomes complete with `workdaySatisfied`, shown as "Satisfied in Workday" with the items verbatim. Any other disagreement → `mismatch`: a loud box first on the page with a copyable `bugReport()` (app-render.js; course list, no name or ID). Both front ends.
+- Workday's Status per requirement (the .xlsx Status column; in a paste, the line after the requirement name) comes back from both progress parsers as `workdayStatus` (requirement → `{ status, items }`, items verbatim). `analyze()` compares Satisfied / Not Satisfied with its own result (`workdayChecks`; "In Progress" isn't compared). Workday Satisfied by something that isn't a course (`Military - 05/01/2025`, nothing listed) → `accepted`: the result becomes complete with `workdaySatisfied`, shown as "Satisfied in Workday" with the items verbatim. Any other disagreement → `mismatch`: a loud box first on the page with a copyable `bugReport()` (app-render.js; course list, no name or ID).
 
 ## Grades and repeats
 
@@ -125,7 +120,7 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 
 ## Academic History
 
-- Pasting Academic History is still accepted but not supported: it lacks transfer/in-progress labels and Workday's requirement listings. The app and launcher warn; instructions point to Academic Progress.
+- Pasting Academic History is still accepted but not supported: it lacks transfer/in-progress labels and Workday's requirement listings. The app warns; instructions point to Academic Progress.
 
 ## Requirement Rules
 
@@ -151,15 +146,6 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 - `in-progress` — course marked "(In Progress)" in Workday; included in `allActiveSet`, so it counts for both pick-one and hour-range requirements (same as completed).
 - `transfer` — transfer credit, marked "(Transfer Credit)" (Academic Progress only); treated like `completed` for requirement matching.
 - `exemption` — special entry (e.g., "World Languages I Exemption"); satisfies a named category without contributing hours.
-
-## Design Decisions
-
-- Completed non-tag categories get `opacity: 0.45` with `:hover` restore. Tags stay full opacity because they overlap with other requirements.
-- Double-count = course appearing in multiple `acalog-core` blocks. Annotated on **both sides** with clickable links that scroll to the other section.
-- Double-count uses blue (#e8f0fe / #1a73e8), not red/orange — it's an opportunity, not a warning.
-- Cross-references are real DOM `<span>` + `<a>` elements (not `::after` pseudo-elements) so they can be clickable.
-- Taken courses that appear in multiple sections get a green→blue gradient background.
-- Page reload = reset. No cleanup logic needed beyond what `render()` does for re-runs.
 
 ## Not Yet Implemented
 

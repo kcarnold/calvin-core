@@ -12,42 +12,11 @@ Unofficial planning aid that checks a student's Workday courses against Calvin's
 - Course codes link to `preview_course_nopop.php`; each requirement links to its spot on the official catalog page.
 - Everything runs in the browser. The page's Content-Security-Policy blocks network requests (`connect-src 'none'`), so pasted data can't leave it.
 
-## Catalog extension and bookmarklet
-
-The original tool annotates the catalog page itself:
-
-- https://catalog.calvin.edu/content.php?catoid=25&navoid=803 (2026–27 catalog)
-- https://catalog.calvin.edu/content.php?catoid=24&navoid=780 (2025–26 catalog)
-
-Requirements are read from whichever page is open. When the page loads, the extension adds a collapsed Calvin Core Annotator panel above the catalog content; paste Workday Academic History or Academic Progress into it.
-
-## Load Locally
-
-### Chrome or Edge
-
-1. Open the extensions page.
-	Chrome: `chrome://extensions`
-	Edge: `edge://extensions`
-2. Turn on Developer mode.
-3. Click Load unpacked.
-4. Select this repository folder.
-
-### Firefox
-
-1. Open `about:debugging`.
-2. Click This Firefox.
-3. Click Load Temporary Add-on.
-4. Select `manifest.json` from this repository.
-
-Firefox temporary add-ons unload when the browser restarts, so that path is best for testing. For broader student distribution, publish the extension package.
-
-> **Note:** Run `npm run build` first — the manifest now points to `dist/extension.js`.
-
 ## Development
 
 ```sh
 npm install
-npm run build   # → docs/app.js, dist/extension.js, dist/bookmarklet.js, docs/bookmarklet.js
+npm run build   # → docs/app.js, docs/overlap-view.js
 npm test        # unit, claims, fidelity, and integration tests
 # Preview the app (its CSP needs http, not file://):
 python3 -m http.server --directory docs
@@ -70,24 +39,6 @@ npm test
 
 The integration harness uses `catalog/catalog-24.html`.
 
-## Bookmarklet
-
-For local testing, after `npm run build`, wrap `dist/bookmarklet.js` in a `javascript:` URL:
-
-```sh
-echo "javascript:$(cat dist/bookmarklet.js)" | pbcopy
-```
-
-Paste as a bookmark's URL. Click it on the catalog page.
-
-For a hosted bookmarklet that always loads the latest deployed bundle, publish the `docs/` directory with GitHub Pages. The install page lives at:
-
-```text
-https://kcarnold.github.io/calvin-core/bookmarklet.html
-```
-
-The live bookmarklet there injects `https://kcarnold.github.io/calvin-core/bookmarklet.js`, so pushing a new `docs/bookmarklet.js` updates the bookmarklet behavior without asking users to replace the bookmark.
-
 ## Program Overlap Viewer (Separate)
 
 The overlap viewer is intentionally distributed as a separate tool from the core transcript annotator.
@@ -105,15 +56,10 @@ src/
   core.js       ← parsers, catalog instruction rules, analyze (pure, testable)
   app.js        ← standalone app entry (bundles catalog/*.json)
   app-render.js ← standalone app rendering (testable in jsdom)
-  render.js     ← catalog-page annotation (extension/bookmarklet)
-  ui.js         ← catalog-page launcher panel
-  main.js       ← extension entry point
-  bookmarklet-entry.js ← hosted bookmarklet entry point
 catalog/        ← catalog-<catoid>.html (saved from a browser) + generated catalog-categories-<catoid>.json
-docs/           ← GitHub Pages: app (index.html, app.js), bookmarklet install page + bundle
+docs/           ← GitHub Pages: app (index.html, app.js), overlap viewer install page + bundle
 test/           ← node:test suites, integration harness, catalog JSON generator
 build.js        ← esbuild config
-manifest.json   ← WebExtension manifest (Chrome, Edge, Firefox)
 script.js       ← legacy monolith (kept for reference, not used by build)
 overlap_view.js ← standalone program/core overlap panel script
 ```
