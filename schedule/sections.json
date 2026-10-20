@@ -10,7 +10,7 @@
    {
     "term": "27SP",
     "label": "Spring 2027",
-    "savedAt": "2026-10-19",
+    "savedAt": "2026-10-20",
     "shown": true
    },
    {
@@ -256,7 +256,7 @@
   "CORE 100": {
    "min": 2,
    "max": 2,
-   "term": "26FA"
+   "term": "27SP"
   },
   "CORE 231": {
    "min": 2,
@@ -1931,6 +1931,15 @@
      "meets": "MWF 1:30–2:35 PM",
      "instructors": "Katie Good",
      "title": "Advanced Comm Study: Global Film and Media"
+    }
+   ]
+  },
+  "CORE 100": {
+   "27SP": [
+    {
+     "section": "A",
+     "meets": "TTH 10:20 AM–12:00 PM",
+     "instructors": "Matt Bonzo"
     }
    ]
   },
