@@ -57,7 +57,8 @@ src/
   app.js        ← standalone app entry (bundles catalog/*.json)
   app-render.js ← standalone app rendering (testable in jsdom)
 catalog/        ← catalog-<catoid>.html (saved from a browser) + generated catalog-categories-<catoid>.json
-docs/           ← GitHub Pages: app (index.html, app.js), overlap viewer install page + bundle
+docs/           ← GitHub Pages: app (index.html, app.js), overlap viewer install page + bundle,
+                 bookmarklet.html/.js stubs pointing old catalog-page bookmarks to the app (hand-written)
 test/           ← node:test suites, integration harness, catalog JSON generator
 build.js        ← esbuild config
 script.js       ← legacy monolith (kept for reference, not used by build)
