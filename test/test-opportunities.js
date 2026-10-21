@@ -12,7 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  scenario, loadCategories, makeCourse, verifyOpportunities, getResult,
+  scenario, loadCategories, makeCourse, verifyOpportunities, getResult, CATOIDS,
 } from './helpers.js';
 import { analyze } from './recorder.js';
 
@@ -180,44 +180,47 @@ describe('negative cases: adding should NOT improve', () => {
 // ---- Generic opportunity verifier ----
 
 describe('generic opportunity verifier', () => {
-  it('all "satisfied" categories have a real, actionable opportunity (empty transcript)', async (t) => {
-    // With no courses taken, no category should be "satisfied"
-    const analysis = analyze(categories, []);
-    await verifyOpportunities(analysis, categories, [], t);
-  });
+  for (const catoid of CATOIDS) describe(`catalog ${catoid}`, () => {
+    const categories = loadCategories(catoid);
+    it('all "satisfied" categories have a real, actionable opportunity (empty transcript)', async (t) => {
+      // With no courses taken, no category should be "satisfied"
+      const analysis = analyze(categories, []);
+      await verifyOpportunities(analysis, categories, [], t);
+    });
 
-  it('verify opportunities with Humanities satisfied', async (t) => {
-    const transcript = [makeCourse('HIST 152', 4)];
-    const analysis = analyze(categories, transcript);
-    await verifyOpportunities(analysis, categories, transcript, t);
-  });
+    it('verify opportunities with Humanities satisfied', async (t) => {
+      const transcript = [makeCourse('HIST 152', 4)];
+      const analysis = analyze(categories, transcript);
+      await verifyOpportunities(analysis, categories, transcript, t);
+    });
 
-  it('verify opportunities with multiple K&U categories partially filled', async (t) => {
-    const transcript = [
-      makeCourse('HIST 152', 4),   // Humanities: satisfied
-      makeCourse('CHEM 101', 4),   // Natural Sciences: satisfied
-      makeCourse('ECON 221', 4),   // S&B Sciences: satisfied
-    ];
-    const analysis = analyze(categories, transcript);
-    await verifyOpportunities(analysis, categories, transcript, t);
-  });
+    it('verify opportunities with multiple K&U categories partially filled', async (t) => {
+      const transcript = [
+        makeCourse('HIST 152', 4),   // Humanities: satisfied
+        makeCourse('CHEM 101', 4),   // Natural Sciences: satisfied
+        makeCourse('ECON 221', 4),   // S&B Sciences: satisfied
+      ];
+      const analysis = analyze(categories, transcript);
+      await verifyOpportunities(analysis, categories, transcript, t);
+    });
 
-  it('verify: no false opportunities when all K&U are complete', async (t) => {
-    // Fill every K&U category to completion
-    const transcript = [
-      makeCourse('HIST 152', 4), makeCourse('PHIL 153', 4),
-      makeCourse('CHEM 101', 4), makeCourse('PHYS 133', 4),
-      makeCourse('ECON 221', 4), makeCourse('PSYC 151', 4),
-      makeCourse('MUSC 100', 4), makeCourse('COMM 248', 4),
-      makeCourse('MATH 100', 4),
-      makeCourse('SPAN 202', 4),
-    ];
-    const analysis = analyze(categories, transcript);
-    // No category should be "satisfied" — they should all be "complete"
-    const satisfied = analysis.results.filter(r => r.status === 'satisfied');
-    assert.equal(satisfied.length, 0,
-      `Expected no satisfied categories, got: ${satisfied.map(r => r.name).join(', ')}`);
-    // Run verifier anyway — it should find nothing to verify
-    await verifyOpportunities(analysis, categories, transcript, t);
+    it('verify: no false opportunities when all K&U are complete', async (t) => {
+      // Fill every K&U category to completion
+      const transcript = [
+        makeCourse('HIST 152', 4), makeCourse('PHIL 153', 4),
+        makeCourse('CHEM 101', 4), makeCourse('PHYS 133', 4),
+        makeCourse('ECON 221', 4), makeCourse('PSYC 151', 4),
+        makeCourse('MUSC 100', 4), makeCourse('COMM 248', 4),
+        makeCourse('MATH 100', 4),
+        makeCourse('SPAN 202', 4),
+      ];
+      const analysis = analyze(categories, transcript);
+      // No category should be "satisfied" — they should all be "complete"
+      const satisfied = analysis.results.filter(r => r.status === 'satisfied');
+      assert.equal(satisfied.length, 0,
+        `Expected no satisfied categories, got: ${satisfied.map(r => r.name).join(', ')}`);
+      // Run verifier anyway — it should find nothing to verify
+      await verifyOpportunities(analysis, categories, transcript, t);
+    });
   });
 });

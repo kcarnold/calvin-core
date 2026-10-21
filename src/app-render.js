@@ -178,17 +178,22 @@ export function renderApp(root, state) {
     }));
   }
 
+  // "4 hrs", or for a course split across K&U categories "2 of 4 hrs, split with …".
+  const hoursText = a => a.splitWith
+    ? `${fmtHours(a.hours)} of ${fmtHours(a.courseHours)} hrs, split with ${a.splitWith.join(' and ')}`
+    : `${fmtHours(a.hours)} hrs`;
+
   function courseRow(cat, c, a) {
     // a: the course's annotation from analyze(), if any
     const flags = [];
     let rowCls = 'course';
     if (a) {
-      if (a.isExcludedTransfer) { rowCls += ' is-excluded'; flags.push(h('span', { class: 'chip chip-excluded' }, `Transfer, ${fmtHours(a.hours)} hrs — not accepted here`)); }
-      else if (a.isInProgress) { rowCls += ' is-active'; flags.push(h('span', { class: 'chip chip-progress' }, `In progress · ${fmtHours(a.hours)} hrs`)); }
+      if (a.isExcludedTransfer) { rowCls += ' is-excluded'; flags.push(h('span', { class: 'chip chip-excluded' }, `Transfer, ${hoursText(a)} — not accepted here`)); }
+      else if (a.isInProgress) { rowCls += ' is-active'; flags.push(h('span', { class: 'chip chip-progress' }, `In progress · ${hoursText(a)}`)); }
       else if (a.isTaken) {
         rowCls += ' is-active';
         flags.push(h('span', { class: 'chip chip-taken' },
-          (a.isTransfer ? 'Transfer' : 'Taken') + (a.grade && !a.isTransfer ? ` · ${a.grade}` : '') + ` · ${fmtHours(a.hours)} hrs`));
+          (a.isTransfer ? 'Transfer' : 'Taken') + (a.grade && !a.isTransfer ? ` · ${a.grade}` : '') + ` · ${hoursText(a)}`));
       } else if (a.isPlanned) { rowCls += ' is-planned'; flags.push(h('span', { class: 'chip chip-planned' }, plannedLabel(c.code))); }
       else if (a.isMaxedDiscipline) { rowCls += ' is-maxed'; flags.push(h('span', { class: 'chip chip-muted' }, 'Discipline max reached')); }
     }
@@ -516,7 +521,7 @@ export function renderApp(root, state) {
     if (active.some(({ a }) => a.isAssumed)) items.push('Transfer or AP credit without a course number is placed by its subject, e.g. HIST counts as History.');
     const catByName = new Map(catalog.categories.filter(c => c.name).map(c => [c.name, c]));
     const unconfirmed = active.filter(({ r, a }) => (a.otherCategories || [])
-      .some(n => !doubleCountConfirmed(catByName.get(r.name), catByName.get(n))));
+      .some(n => !doubleCountConfirmed(catByName.get(r.name), catByName.get(n), a.code)));
     if (unconfirmed.length) {
       const codes = [...new Set(unconfirmed.map(({ a }) => a.code))].join(', ');
       items.push(`A course listed under several requirements counts toward each of them (${codes}).`);

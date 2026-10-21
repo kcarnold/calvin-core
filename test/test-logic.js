@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { scenario, loadCategories, makeCourse, makeExemption, assertStatus, assertKU, getResult } from './helpers.js';
+import { scenario, loadCategories, makeCourse, makeExemption, assertStatus, assertKU, getResult, CATOIDS } from './helpers.js';
 import { isTransferExcluded, workdayRequirementCategory } from '../src/core.js';
 import { analyze } from './recorder.js';
 import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
@@ -208,7 +208,7 @@ describe('transfer credits', () => {
 });
 
 describe('K&U aggregate comes from the catalog wording', () => {
-  for (const catoid of ['24', '25']) {
+  for (const catoid of CATOIDS) {
     it(`catalog ${catoid}: 26 hours from 5 categories`, () => {
       const { kuSummary } = analyze(loadCategories(catoid), []);
       assert.equal(kuSummary.requiredHours, 26);
@@ -388,6 +388,29 @@ describe('union of known catalogs (extraCourses)', () => {
     assert.deepEqual(r.hoursByDiscipline, { 'Creative Writing': 4 });
   });
 
+  it('a discipline heading respelled between catalogs shares one cap', () => {
+    // CSP 305 is only in 2023-24, under "Sociology & Social Work"; 2025-26 says "and".
+    const analysis = analyze(loadCategories('24'), [makeCourse('CSP 305', 4), makeCourse('SOC 151', 4)], withUnion);
+    const r = getResult(analysis, 'Social and Behavioral Sciences');
+    assert.deepEqual(r.hoursByDiscipline, { 'Sociology and Social Work': 8 });
+    assert.equal(r.hoursEffective, 4);
+  });
+
+  for (const catoid of ['21', '25']) {
+    it(`a course in two K&U categories splits its hours between them (HNRS 209, ${catoid})`, () => {
+      const analysis = analyze(loadCategories(catoid), [makeCourse('HNRS 209', 4)], withUnion);
+      for (const [name, other] of [['Arts, Oral Rhetoric, Visual Rhetoric', 'Social and Behavioral Sciences'],
+        ['Social and Behavioral Sciences', 'Arts, Oral Rhetoric, Visual Rhetoric']]) {
+        assertStatus(analysis, name, { status: 'satisfied', hours: 2 });
+        const ann = getResult(analysis, name).courseAnnotations.find(a => a.code === 'HNRS 209');
+        assert.equal(ann.hours, 2);
+        assert.equal(ann.courseHours, 4);
+        assert.deepEqual(ann.splitWith, [other]);
+      }
+      assertKU(analysis, { total: 4, categories: 2 });
+    });
+  }
+
   it('does not add requirements the open catalog lacks', () => {
     const analysis = analyze(loadCategories('24'), [makeCourse('COMM 200', 3)], withUnion);
     assert.equal(analysis.results.some(r => r.name === 'Rhetoric in Disciplines'), false);
@@ -513,7 +536,7 @@ describe('Courses Workday lists under a requirement the catalog does not', () =>
   // Reported: a summer ENGR 202 section Workday counts as Global Regions and Cultures.
   const engr202 = { ...makeCourse('ENGR 202', 4), title: 'Statics and Dynamics', requirements: ['Global Regions and Cultures Core'] };
 
-  for (const catoid of ['24', '25']) {
+  for (const catoid of CATOIDS) {
     it(`a pick-one requirement counts it, labeled as from Workday (${catoid})`, () => {
       const analysis = analyze(loadCategories(catoid), [engr202], { extraCourses: KNOWN_COURSE_CATEGORIES });
       assertStatus(analysis, GRC, { status: 'complete' });

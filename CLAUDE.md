@@ -5,6 +5,10 @@ Shows a student's core program status from pasted Workday data. The **Core Plann
 Supported catalogs (listed in `CATALOGS` in `src/app.js`; students use the catalog for their entry year):
 - `catoid=25&navoid=803` — 2026–27. Adds the "Rhetoric in Disciplines" pick-one requirement.
 - `catoid=24&navoid=780` — 2025–26.
+- `catoid=22&navoid=714` — 2024–25. Natural Sciences adds "At least one course must include a laboratory" (not checked).
+- `catoid=21&navoid=695` — 2023–24. Same lab sentence. HNRS 209 sits in both Arts and Social and Behavioral Sciences (hours split).
+
+catoid doesn't follow the year (21 is 2023–24); `CATALOG_INFO.catalogYear` is the label. Every K&U structure (categories, hour ranges, caps, 26 hrs from 5 of 6) is the same across all four; wording differences are what the claims test tracks. Only 2026–27 requires Contemporary Challenges at Calvin.
 
 **Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `app.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to requirements in the selected catalog. Taken courses matched only via the union get `isFromOtherCatalog` annotations; the app lists them as labeled `.extra-course` items. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
 
@@ -26,7 +30,10 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/test-catalog-snapshot.js`: committed JSON and `src/catalog-courses.js` must equal a fresh generation from the saved HTML.
 - K&U aggregate (26 hrs, 5 of 6 categories) is parsed from the K&U section wording (`kuAggregate`), not hardcoded.
 - "Transfer credit not accepted" / "must be completed at Calvin" exclude `transfer` courses from that requirement (`isExcludedTransfer` annotation; app warns).
-- Double counting: a course listed under two requirements counts toward both. Confirmed when either is a tag or Rhetoric in Disciplines (`overlapConfirmed` in `core.js`, confirmed 2026-10-15); the claims test fails on any other overlap, and the app lists unconfirmed ones as an assumption.
+- Double counting: a course listed under two requirements counts toward both. Confirmed when either is a tag or Rhetoric in Disciplines (`overlapConfirmed` in `core.js`, confirmed 2026-10-15), or for the course itself (`OVERLAP_CONFIRMED_COURSES`: HNRS 209, a CORE+CORE honors course designed to count for both). A course in several K&U categories splits its hours evenly among them (`kuSplit` in `analyze()`): HNRS 209's 4 hours count 2 + 2, 4 toward the aggregate; the app says "2 of 4 hrs, split with …"). The claims test fails on any other overlap, in each catalog and in the union; the app lists unconfirmed ones as an assumption. Known and left unconfirmed (`KNOWN_UNCONFIRMED` in the claims test):
+  - HNRS 100, Community and Commitments / Humanities: probably offered under that name only in 2023–24; 2024–25 dropped it from C&C but left it in Humanities. Fine to count both; Workday lists it under each requirement it meets.
+  - HIST 263: Humanities in 2023–24, Foundations of Christianity II from 2024–25. Only the union puts it in both.
+- Sub-discipline headings get respelled ("Sociology & Social Work" in 2023–24, "and" later). Union and placeholder courses take the selected catalog's spelling (`inCatalogSpelling` in `core.js`) so the per-discipline cap holds.
 - World Languages II's 101–102 option: issue #2 (use Workday listing a language course under K&U).
 - Foundational Writing's list is "ENGL 101 Or ENGL 100 ENGL 102": parsed as `alternatives` [[101], [100, 102]]; a whole alternative is needed. (ENGL 100 is a prerequisite of ENGL 102, so this mostly just surfaces the prerequisite; no need to handle it specially.)
 

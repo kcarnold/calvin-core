@@ -14,11 +14,23 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INSTRUCTION_RULES, classifyInstructions, doubleCountConfirmed, KU_NAMES } from '../src/core.js';
+import { KNOWN_COURSE_CATEGORIES } from '../src/catalog-courses.js';
 import { loadCategories } from './helpers.js';
 
 const CATALOG_DIR = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'catalog');
 const CATOIDS = readdirSync(CATALOG_DIR)
   .map(f => f.match(/^catalog-categories-(\d+)\.json$/)?.[1]).filter(Boolean);
+
+// Overlaps left unconfirmed on purpose (the app still lists them as an assumption).
+// HNRS 100 (2023-24): probably offered under that name only that year; 2024-25
+// dropped it from Community and Commitments but left it in Humanities. Workday
+// lists it under each requirement it meets, which settles any real case.
+// HIST 263: Humanities in 2023-24, Foundations of Christianity II from 2024-25;
+// only the union puts it in both.
+const KNOWN_UNCONFIRMED = [
+  'HNRS 100: Community and Commitments / Humanities',
+  'HIST 263: Foundations of Christianity II / Humanities',
+];
 
 describe('catalog claims', () => {
   it('found saved catalogs', () => assert.ok(CATOIDS.length >= 2, CATOIDS.join(',')));
@@ -75,14 +87,15 @@ describe('catalog claims', () => {
         assert.deepEqual(withOr[0].alternatives, [['ENGL 101'], ['ENGL 100', 'ENGL 102']]);
       });
 
-      it('the six K&U categories exist and no course sits in two of them (hours would count twice)', () => {
+      it('the six K&U categories exist and no course sits in two of them (its hours would be split) unless confirmed', () => {
         const ku = cats.filter(c => KU_NAMES.includes(c.name));
         assert.deepEqual(ku.map(c => c.name).sort(), [...KU_NAMES].sort());
         const seen = new Map();
         for (const cat of ku) {
           for (const c of cat.courses) {
-            assert.ok(!seen.has(c.code), `${c.code} in both ${seen.get(c.code)} and ${cat.name}`);
-            seen.set(c.code, cat.name);
+            assert.ok(!seen.has(c.code) || doubleCountConfirmed(seen.get(c.code), cat, c.code),
+              `${c.code} in both ${seen.get(c.code)?.name} and ${cat.name}`);
+            seen.set(c.code, cat);
           }
         }
       });
@@ -98,7 +111,8 @@ describe('catalog claims', () => {
         const unconfirmed = [];
         for (const [code, list] of byCode) {
           for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-            if (!doubleCountConfirmed(list[i], list[j])) unconfirmed.push(`${code}: ${list[i].name} / ${list[j].name}`);
+            const pair = `${code}: ${list[i].name} / ${list[j].name}`;
+            if (!doubleCountConfirmed(list[i], list[j], code) && !KNOWN_UNCONFIRMED.includes(pair)) unconfirmed.push(pair);
           }
         }
         assert.deepEqual(unconfirmed, []);
@@ -109,4 +123,23 @@ describe('catalog claims', () => {
       });
     });
   }
+
+  // The union applies every catalog's lists to every catalog, so an overlap in
+  // one old catalog reaches students on all of them.
+  it('every course listed under two requirements in the union of catalogs may count toward both', () => {
+    const catByName = new Map(CATOIDS.flatMap(id => loadCategories(id)).filter(c => c.name).map(c => [c.name, c]));
+    const byCode = new Map();
+    for (const [name, codes] of Object.entries(KNOWN_COURSE_CATEGORIES)) for (const code of Object.keys(codes)) {
+      if (!byCode.has(code)) byCode.set(code, []);
+      byCode.get(code).push(catByName.get(name));
+    }
+    const unconfirmed = [];
+    for (const [code, list] of byCode) {
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+        const pair = `${code}: ${list[i].name} / ${list[j].name}`;
+        if (!doubleCountConfirmed(list[i], list[j], code) && !KNOWN_UNCONFIRMED.includes(pair)) unconfirmed.push(pair);
+      }
+    }
+    assert.deepEqual(unconfirmed, []);
+  });
 });

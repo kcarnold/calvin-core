@@ -8,7 +8,10 @@ import { JSDOM } from 'jsdom';
 import { parseCoreProgram } from '../src/core.js';
 
 // Update savedAt when re-saving a catalog page from the browser.
+// catoid doesn't follow the year: 21 is 2023-24.
 export const CATALOG_INFO = {
+  '21': { catalogYear: '2023-24', navoid: '695', savedAt: '2026-10-21' },
+  '22': { catalogYear: '2024-25', navoid: '714', savedAt: '2026-10-21' },
   '24': { catalogYear: '2025-26', navoid: '780', savedAt: '2026-10-15' },
   '25': { catalogYear: '2026-27', navoid: '803', savedAt: '2026-10-15' },
 };

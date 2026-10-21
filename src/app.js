@@ -9,10 +9,12 @@ import { renderApp, catalogLabel } from './app-render.js';
 import { buildTestCase, formatTestCase } from './test-case.js';
 import catalog25 from '../catalog/catalog-categories-25.json';
 import catalog24 from '../catalog/catalog-categories-24.json';
+import catalog22 from '../catalog/catalog-categories-22.json';
+import catalog21 from '../catalog/catalog-categories-21.json';
 import schedule from '../schedule/sections.json';
 
 // Newest first.
-const CATALOGS = [catalog25, catalog24];
+const CATALOGS = [catalog25, catalog24, catalog22, catalog21];
 const YEAR_KEY = 'calvin-core:catalog';
 
 const state = {

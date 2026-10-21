@@ -12,7 +12,7 @@
  *     .run(t)   // t is a node:test context
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -22,6 +22,11 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // ---- Catalog loader (cached per catoid) ----
 
 const _cached = new Map();
+
+/** Every saved catalog, newest first ('25' = 2026-27 … '21' = 2023-24). */
+export const CATOIDS = readdirSync(join(__dirname, '..', 'catalog'))
+  .map(f => f.match(/^catalog-categories-(\d+)\.json$/)?.[1]).filter(Boolean)
+  .sort((a, b) => b - a);
 
 /** catoid '25' = 2026-27 catalog (default), '24' = 2025-26. */
 export function loadCategories(catoid = '25') {

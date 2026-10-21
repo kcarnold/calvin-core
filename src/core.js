@@ -441,13 +441,19 @@ export const INSTRUCTION_RULES = [
     note: 'Transfer credit still counts here.',
   },
   {
+    // 2023-24 and 2024-25 catalogs only.
+    id: 'lab', checked: false,
+    re: /^At least one course must include a laboratory\.$/,
+    note: 'Whether a course includes a laboratory isn’t checked.',
+  },
+  {
     id: 'no-test-credit', checked: false,
     re: /^Test credit, including Advanced Placement, CLEP, and International Baccalaureate, may not satisfy Engaged Citizenship Commitment requirements\.$/,
     note: 'Workday transfer credit isn’t distinguished from test credit.',
   },
   {
     id: 'exemption', checked: false,
-    re: /^(?:A student participating at Calvin in a varsity sport for two full seasons is exempt|Completion of ROTC or other military training exempts a student from both Health and Movement requirements|High school exemption from World Languages I is possible|To obtain a high school exemption, .+|\(Near\) native speakers of a language other than English are exempt from World Languages I)\.$/,
+    re: /^(?:A student participating (?:at Calvin in a varsity sport|in a varsity sport at Calvin) for two full seasons is exempt|Completion of ROTC or other military training exempts a student from both Health and Movement requirements|High school exemption from World Languages I is possible|To obtain a high school exemption, .+|\(Near\) native speakers of a language other than English are exempt from World Languages I)\.$/,
     note: 'Exemptions are recognized only when Academic Progress lists them.',
   },
   {
@@ -482,9 +488,15 @@ export function overlapConfirmed(cat) {
   return cat?.type === 'tag' || OVERLAP_CONFIRMED_NAMES.includes(cat?.name);
 }
 
-// Can one course count toward both requirements? Confirmed when either one allows overlap.
-export function doubleCountConfirmed(catA, catB) {
-  return overlapConfirmed(catA) || overlapConfirmed(catB);
+// Courses listed under two requirements that may count toward both.
+// HNRS 209 (2023-24: Arts and Social and Behavioral Sciences): CORE+CORE honors
+// courses were designed to count for both, hours split between them (confirmed 2026-10-21).
+const OVERLAP_CONFIRMED_COURSES = ['HNRS 209'];
+
+// Can one course count toward both requirements? Confirmed when either one
+// allows overlap, or for the course itself.
+export function doubleCountConfirmed(catA, catB, code) {
+  return overlapConfirmed(catA) || overlapConfirmed(catB) || OVERLAP_CONFIRMED_COURSES.includes(code);
 }
 
 export function isTransferExcluded(cat) {
@@ -560,6 +572,15 @@ export const ONE_TABLE_EXPORT_MESSAGE = 'it doesn’t list any core requirements
 // share of them sit in one (category, sub-discipline).
 const PLACEHOLDER_MIN_SHARE = 0.75;
 
+// Sub-discipline headings are sometimes respelled between catalogs ("Sociology &
+// Social Work" in 2023-24, "Sociology and Social Work" later). Courses from other
+// catalogs take this catalog's spelling so a discipline's hours share one cap.
+const disciplineKey = name => name.toLowerCase().replace(/\s*&\s*/g, ' and ');
+function inCatalogSpelling(cat, sub) {
+  if (!sub) return sub;
+  return cat.courses.find(c => c.subDiscipline && disciplineKey(c.subDiscipline) === disciplineKey(sub))?.subDiscipline ?? sub;
+}
+
 // Guess the K&U category for a placeholder like "HIST CORE" from the subject
 // prefix, using every course listed on the page or in extraCourses. Returns
 // { category, subDiscipline } or null when no single home clearly dominates.
@@ -568,7 +589,7 @@ export function inferPlaceholderCategory(subject, cats, extraCourses = {}) {
   for (const cat of cats) {
     if (!KU_NAMES.includes(cat.name) || !cat.courses) continue;
     const codes = new Map(cat.courses.map(c => [c.code, c.subDiscipline]));
-    for (const [code, sub] of Object.entries(extraCourses[cat.name] || {})) if (!codes.has(code)) codes.set(code, sub);
+    for (const [code, sub] of Object.entries(extraCourses[cat.name] || {})) if (!codes.has(code)) codes.set(code, inCatalogSpelling(cat, sub));
     for (const [code, sub] of codes) {
       if (code.split(' ')[0] !== subject) continue;
       const key = JSON.stringify([cat.name, sub ?? null]);
@@ -662,6 +683,10 @@ export function analyze(cats, transcript, options = {}) {
       if (name) (workdayCourses[name] ??= new Set()).add(c.code);
     }
   }
+  // A course listed in several K&U categories (HNRS 209: Arts and Social and
+  // Behavioral Sciences) splits its hours evenly among them: 4 hours count 2 + 2.
+  const kuSplit = (catName, code) => KU_NAMES.includes(catName)
+    ? (c2c[code] || []).filter(n => KU_NAMES.includes(n)) : [catName];
   const kuAggregate = cats.find(c => c.kuAggregate)?.kuAggregate;
   const kuH = {}; let kuTotal = 0, kuCount = 0;
   const results = [];
@@ -699,7 +724,7 @@ export function analyze(cats, transcript, options = {}) {
     const countsHere = code => allActiveSet.has(code) && !isExcludedTransfer(code);
     const extraHere = Object.entries(extraCourses[cat.name] || {})
       .filter(([code]) => !pageCodes.has(code) && allActiveSet.has(code))
-      .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, isFromOtherCatalog: true }));
+      .map(([code, sub]) => ({ code, title: takenMap[code]?.title || '', subDiscipline: inCatalogSpelling(cat, sub), isFromOtherCatalog: true }));
     for (const [code, subDiscipline] of Object.entries(assumedCourses[cat.name] || {})) {
       if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, isAssumed: true });
     }
@@ -718,7 +743,8 @@ export function analyze(cats, transcript, options = {}) {
       const tc = takenMap[c.code];
       if (!tc || counted.has(tc)) continue;
       counted.add(tc);
-      hrsRaw += tc.hours; const d = c.subDiscipline || 'General'; hByD[d] = (hByD[d] || 0) + tc.hours;
+      const hrs = tc.hours / (kuSplit(cat.name, c.code).length || 1);
+      hrsRaw += hrs; const d = c.subDiscipline || 'General'; hByD[d] = (hByD[d] || 0) + hrs;
     }
     // Hours that count: each discipline capped at maxPerDiscipline, then the total at maxHours.
     // Courses with no known discipline ('General') aren't capped together.
@@ -767,10 +793,12 @@ export function analyze(cats, transcript, options = {}) {
       const isPlanned = !isActive && plannedSet.has(c.code);
       const otherCats = (c2c[c.code] || []).filter(n => n !== cat.name);
       const tc = takenMap[c.code];
+      const split = kuSplit(cat.name, c.code);
       return { ...c, isTaken, isInProgress, otherCategories: otherCats,
         isPlanned, isExcludedTransfer: isExcludedTransfer(c.code),
         isMaxedDiscipline: maxedD.has(c.subDiscipline || 'General') && !isActive,
-        grade: isActive ? (tc?.grade || '') : '', hours: isActive ? (tc?.hours || 0) : 0,
+        grade: isActive ? (tc?.grade || '') : '', hours: isActive ? (tc?.hours || 0) / (split.length || 1) : 0,
+        ...(isActive && split.length > 1 && { courseHours: tc?.hours || 0, splitWith: split.filter(n => n !== cat.name) }),
         isTransfer: tc?.status === 'transfer' };
     });
     // Hours more that could still count here: up to maxHours, and only in disciplines
