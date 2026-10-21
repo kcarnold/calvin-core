@@ -1,8 +1,8 @@
 /**
  * One-shot script: parse catalog/catalog-<catoid>.html → catalog/catalog-categories-<catoid>.json
  *
- * Extracts the pure-data fields from parseCoreProgram() output, stripping
- * all DOM element references. The resulting JSON is hand-verifiable,
+ * Keeps the fields of parseCoreProgram() output that analyze() and the app
+ * use. The resulting JSON is hand-verifiable,
  * diffable, and loads instantly (no JSDOM needed for logic tests). The
  * standalone app bundles it.
  *

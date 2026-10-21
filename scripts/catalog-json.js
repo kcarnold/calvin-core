@@ -17,7 +17,7 @@ export function catalogPageUrl(catoid) {
   return `https://catalog.calvin.edu/content.php?catoid=${catoid}&navoid=${CATALOG_INFO[catoid].navoid}`;
 }
 
-// Strip DOM-only fields, keep everything analyze() and the app need.
+// Keep only what analyze() and the app need.
 export function buildCatalogJson(html, catoid) {
   const doc = new JSDOM(html).window.document;
   const categories = parseCoreProgram(doc).map(cat => {

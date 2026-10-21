@@ -300,10 +300,8 @@ export function parseKuAggregate(instructions) {
   return { minHours: parseInt(m[1]), minCategories: num(m[2]), ofCategories: num(m[3]) };
 }
 
-// Accepts a root element (defaults to document in browser).
-// In tests, pass a jsdom document or a container element with querySelectorAll.
+// Takes a root with querySelectorAll: a jsdom document of the saved catalog page.
 export function parseCoreProgram(root) {
-  if (!root) root = document;
   const blocks = root.querySelectorAll('div.acalog-core');
   const cats = [];
   let section = '';
@@ -318,8 +316,7 @@ export function parseCoreProgram(root) {
 
     if (h2 && !h3 && !h4) {
       section = normalizeText(h2.textContent);
-      if (heading) heading.id = slugify(section);
-      const header = { type: 'section-header', section, instructions: inst, element: b, coreIndex: i, slug: slugify(section), coreId };
+      const header = { type: 'section-header', section, instructions: inst, coreIndex: i, slug: slugify(section), coreId };
       const kuAggregate = parseKuAggregate(inst);
       if (kuAggregate) header.kuAggregate = kuAggregate;
       cats.push(header);
@@ -331,7 +328,6 @@ export function parseCoreProgram(root) {
       name = Array.from(heading.childNodes)
         .filter(n => n.nodeType === 3 || (n.nodeType === 1 && n.tagName === 'A'))
         .map(n => n.textContent.trim()).join('').trim();
-      heading.id = slugify(name);
     }
 
     const isTag = h4 !== null;
@@ -344,7 +340,6 @@ export function parseCoreProgram(root) {
 
     const ul = b.querySelector('ul');
     const courses = [];
-    const subDisciplineElements = [];
     let curSub = null;
     let connector = null;
     // "A Or B C": each Or starts a new alternative; courses within one are all required.
@@ -356,17 +351,14 @@ export function parseCoreProgram(root) {
           if (CONNECTORS.includes(t)) {
             connector = t;
             if (t === 'Or') alternatives.push([]);
-          } else {
-            curSub = t;
-            subDisciplineElements.push({ name: t, element: li });
-          }
+          } else curSub = t;
         } else if (li.classList.contains('acalog-course')) {
           const link = li.querySelector('a');
           const lt = link ? normalizeText(link.textContent) : '';
           const cm = lt.match(/^([A-Z]{2,5})\s+(\d{3}[A-Z]?)\s*-\s*(.+)$/);
           if (!cm) continue;
           const coid = (link.getAttribute('onclick') || '').match(/showCourse\('\d+',\s*'(\d+)'/)?.[1] || null;
-          const course = { code: cm[1] + ' ' + cm[2], title: cm[3].trim(), subDiscipline: curSub, coid, element: li };
+          const course = { code: cm[1] + ' ' + cm[2], title: cm[3].trim(), subDiscipline: curSub, coid };
           if (connector) { course.connectorBefore = connector; connector = null; }
           courses.push(course);
           alternatives[alternatives.length - 1].push(course.code);
@@ -377,7 +369,7 @@ export function parseCoreProgram(root) {
     const cat = {
       type: isTag ? 'tag' : 'category', section, name, instructions: inst,
       reqType, minHours: minH, maxHours: maxH, maxPerDiscipline: maxPD,
-      courses, subDisciplineElements, element: b, coreIndex: i, slug: slugify(name), coreId
+      courses, coreIndex: i, slug: slugify(name), coreId
     };
     if (alternatives.length > 1) cat.alternatives = alternatives;
     cats.push(cat);
@@ -681,7 +673,7 @@ export function analyze(cats, transcript, options = {}) {
       if (exemptedCategories.has(cat.name)) {
         results.push({ ...cat, status: 'complete', hoursEarned: 0, hoursEffective: 0,
           hoursByDiscipline: {}, maxedDisciplines: new Set(), subDisciplines: null,
-          takenCount: 0, inProgressCount: 0, plannedCount: 0, courseAnnotations: [], isExempt: true });
+          takenCount: 0, courseAnnotations: [], isExempt: true });
         continue;
       }
       results.push({ ...cat, status: 'info-only' }); continue;
@@ -690,16 +682,16 @@ export function analyze(cats, transcript, options = {}) {
     if (exemptedCategories.has(cat.name)) {
       const courseAnnotations = cat.courses.map(c => ({
         ...c, isTaken: allActiveSet.has(c.code), isInProgress: inProgressSet.has(c.code),
-        isPlanned: false, isMultiSection: false, otherCategories: [],
+        isPlanned: false, otherCategories: [],
         isMaxedDiscipline: false, grade: '', hours: 0
       }));
       results.push({ ...cat, status: 'complete', hoursEarned: 0, hoursEffective: 0,
         hoursByDiscipline: {}, maxedDisciplines: new Set(), subDisciplines: null,
-        takenCount: 0, inProgressCount: 0, plannedCount: 0, courseAnnotations, isExempt: true });
+        takenCount: 0, courseAnnotations, isExempt: true });
       continue;
     }
     // Taken courses this page doesn't list here but another known catalog does.
-    // They have no element on the page; render lists them in a note.
+    // The app lists them in a note on the requirement.
     const pageCodes = new Set(cat.courses.map(c => c.code));
     // "Transfer credit not accepted" / "must be completed at Calvin".
     const transferExcluded = isTransferExcluded(cat);
@@ -707,16 +699,16 @@ export function analyze(cats, transcript, options = {}) {
     const countsHere = code => allActiveSet.has(code) && !isExcludedTransfer(code);
     const extraHere = Object.entries(extraCourses[cat.name] || {})
       .filter(([code]) => !pageCodes.has(code) && allActiveSet.has(code))
-      .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isFromOtherCatalog: true }));
+      .map(([code, subDiscipline]) => ({ code, title: takenMap[code]?.title || '', subDiscipline, isFromOtherCatalog: true }));
     for (const [code, subDiscipline] of Object.entries(assumedCourses[cat.name] || {})) {
-      if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, element: null, isAssumed: true });
+      if (allActiveSet.has(code)) extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline, isAssumed: true });
     }
     // Pick-one: Workday is the official record, so a course it lists here counts
     // (overrides, section-specific tags). Not for hour-range (needs a sub-discipline); warned below.
     if (cat.reqType === 'pick-one') {
       for (const code of workdayCourses[cat.name] || []) {
         if (pageCodes.has(code) || extraHere.some(e => e.code === code) || !allActiveSet.has(code)) continue;
-        extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline: null, element: null, isFromWorkday: true });
+        extraHere.push({ code, title: takenMap[code]?.title || '', subDiscipline: null, isFromWorkday: true });
       }
     }
     const takenHere = [...cat.courses, ...extraHere].filter(c => countsHere(c.code));
@@ -773,10 +765,9 @@ export function analyze(cats, transcript, options = {}) {
       const isInProgress = inProgressSet.has(c.code);
       const isActive = isTaken || isInProgress;
       const isPlanned = !isActive && plannedSet.has(c.code);
-      const allCats = c2c[c.code] || [];
-      const otherCats = allCats.filter(n => n !== cat.name);
+      const otherCats = (c2c[c.code] || []).filter(n => n !== cat.name);
       const tc = takenMap[c.code];
-      return { ...c, isTaken, isInProgress, isMultiSection: allCats.length > 1, otherCategories: otherCats,
+      return { ...c, isTaken, isInProgress, otherCategories: otherCats,
         isPlanned, isExcludedTransfer: isExcludedTransfer(c.code),
         isMaxedDiscipline: maxedD.has(c.subDiscipline || 'General') && !isActive,
         grade: isActive ? (tc?.grade || '') : '', hours: isActive ? (tc?.hours || 0) : 0,
@@ -794,11 +785,9 @@ export function analyze(cats, transcript, options = {}) {
       }
       roomHours = Math.max(0, roomHours);
     }
-    const plannedCount = courseAnnotations.filter(c => c.isPlanned).length;
-    const inProgressCount = courseAnnotations.filter(c => c.isInProgress).length;
     results.push({ ...cat, status, hoursEarned: hrsRaw, hoursEffective: hrsEffective,
       hoursByDiscipline: hByD, maxedDisciplines: maxedD, subDisciplines, takenCount: takenHere.length, roomHours,
-      inProgressCount, plannedCount, courseAnnotations });
+      courseAnnotations });
   }
   // Courses Workday counts toward a requirement (or placeholder core credit) that
   // don't count toward it here: the student's results may be understated.

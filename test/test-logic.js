@@ -371,7 +371,6 @@ describe('union of known catalogs (extraCourses)', () => {
     assert.equal(r.status, 'complete');
     const ann = r.courseAnnotations.find(c => c.code === 'GEO 210');
     assert.equal(ann.isFromOtherCatalog, true);
-    assert.equal(ann.element, null);
     assert.equal(ann.hours, 4);
   });
 
@@ -442,7 +441,6 @@ describe('placeholder core credit ("SUBJ CORE")', () => {
     assert.deepEqual(r.hoursByDiscipline, { History: 3 });
     const ann = r.courseAnnotations.find(c => c.code === 'HIST CORE');
     assert.equal(ann.isAssumed, true);
-    assert.equal(ann.element, null);
     assert.equal(analysis.warnings.length, 0);
   });
 
@@ -521,7 +519,6 @@ describe('Courses Workday lists under a requirement the catalog does not', () =>
       assertStatus(analysis, GRC, { status: 'complete' });
       const ann = getResult(analysis, GRC).courseAnnotations.find(a => a.code === 'ENGR 202');
       assert.equal(ann.isFromWorkday, true);
-      assert.equal(ann.element, null);
       assert.deepEqual(analysis.warnings, []);
     });
   }
