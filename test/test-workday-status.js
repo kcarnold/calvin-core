@@ -4,8 +4,8 @@
  * - Failed, withdrawn, incomplete, and audited courses count toward nothing;
  *   resolved incompletes ("IA") do.
  * - A repeated course's later attempt wins.
- * - Where Workday says Satisfied by something that isn't a course (a military
- *   exemption), the tool goes by Workday. Any other disagreement is a mismatch
+ * - Where Workday says Satisfied by a dated item that isn't a course (a
+ *   military exemption) or by nothing listed, the tool goes by Workday. Any other disagreement is a mismatch
  *   the app shows loudly, with a bug report.
  */
 
@@ -139,6 +139,49 @@ describe('Workday Status vs this tool', () => {
       const a = analyze(loadCategories(catoid), courses, { overrides, workdayStatus, extraCourses: KNOWN_COURSE_CATEGORIES });
       assert.deepEqual(a.workdayChecks, [], `catalog ${catoid}`);
     }
+  });
+});
+
+describe('registrations Workday lists that aren\'t a plain course', () => {
+  const header = ['Requirement', 'Status', 'Remaining', 'Registrations Used', 'Academic Period', 'Hours', 'Grade'];
+  const KU = 'Knowledge and Understanding - minimum 26 hours (Click for more details)';
+  const DD = 'Cross-Disciplinary Integration: Diversity & Difference Core';
+  it('a cross-listed course ("SOC 250/ SOWK 250 - ...") is one course with both codes, its hours counted once', () => {
+    const item = 'SOC 250/ SOWK 250 - Diversity and Inequality in the United States';
+    const { courses, workdayStatus } = parseProgressRows([header,
+      [KU, 'In Progress', 'Minimum Combination Required', item, '2025 Fall', '4', 'A'],
+      [DD, 'Satisfied', '', item, '2025 Fall', '4', 'A'],
+    ]);
+    assert.equal(courses.length, 1);
+    assert.equal(courses[0].code, 'SOC 250');
+    assert.deepEqual(courses[0].crossListedCodes, ['SOWK 250']);
+    assert.equal(courses[0].title, 'Diversity and Inequality in the United States');
+    const a = run(courses, { workdayStatus });
+    const dd = getResult(a, 'Diversity and Difference (Tag)');
+    assert.equal(dd.status, 'complete');
+    assert.equal(dd.workdaySatisfied, undefined, 'counted from the course, not taken on Workday\'s word');
+    assert.equal(getResult(a, 'Social and Behavioral Sciences').hoursEarned, 4);
+    assert.deepEqual(a.warnings, []);
+    assert.deepEqual(a.workdayChecks, []);
+  });
+  it('the cross-listed code alone matches too (SOWK 250 listed first)', () => {
+    const { courses } = parseProgressRows([header,
+      [DD, 'Satisfied', '', 'SOWK 250 / SOC 250 - Diversity and Inequality in the United States', '2025 Fall', '4', 'A'],
+    ]);
+    assert.equal(getResult(run(courses), 'Diversity and Difference (Tag)').status, 'complete');
+  });
+  it('an item it can\'t read is a warning, and Workday\'s Satisfied by it is a mismatch, not "Satisfied in Workday"', () => {
+    const item = 'SOC250 & SOWK250 - Diversity and Inequality in the United States';
+    const a = run([], { workdayStatus: ws([[KU, 'In Progress', [item]], [DD, 'Satisfied', [item]]]) });
+    assert.deepEqual(a.warnings.map(w => [w.requirement, w.title]),
+      [['K&U', item], ['Diversity and Difference (Tag)', item]]);
+    assert.deepEqual(a.workdayChecks.map(c => [c.requirement, c.kind]), [['Diversity and Difference (Tag)', 'mismatch']]);
+    assert.equal(getResult(a, 'Diversity and Difference (Tag)').status, 'incomplete');
+    const doc = new JSDOM('<main></main>').window.document;
+    const catalog = JSON.parse(fs.readFileSync(new URL('../catalog/catalog-categories-25.json', import.meta.url), 'utf-8'));
+    renderApp(doc.querySelector('main'), { catalog, analysis: a, source: 'Academic Progress export' });
+    const warning = [...doc.querySelectorAll('.callout-warn li')].map(li => li.textContent).find(t => t.includes(item));
+    assert.match(warning, /couldn’t read it as a course\. Your K&U totals may be too low\./);
   });
 });
 

@@ -465,7 +465,8 @@ export function renderApp(root, state) {
     if (!analysis) return null;
     const items = [];
     for (const w of analysis.warnings || []) {
-      items.push(h('li', {}, h('strong', {}, w.code), w.title ? ' ' + w.title : '', ` (${fmtHours(w.hours)} hrs): ${w.reason}. `,
+      items.push(h('li', {}, h('strong', {}, w.code || w.title), w.code && w.title ? ' ' + w.title : '',
+        w.hours === null ? `: ${w.reason}. ` : ` (${fmtHours(w.hours)} hrs): ${w.reason}. `,
         w.requirement === 'K&U' ? 'Your K&U totals may be too low.'
           : h('span', {}, 'So it isn’t counted toward ', categoryLinks([w.requirement]), ' here.')));
     }
@@ -556,7 +557,7 @@ export function renderApp(root, state) {
           const names = where.get(c.code) || [];
           const notCounted = analysis.notCounted?.includes(c);
           return h('tr', {},
-            h('td', {}, h('strong', {}, c.code || '—'), statusText[c.status] ? h('span', { class: 'cell-status' }, statusText[c.status]) : null),
+            h('td', {}, h('strong', {}, c.code ? [c.code, ...(c.crossListedCodes || [])].join('/') : '—'), statusText[c.status] ? h('span', { class: 'cell-status' }, statusText[c.status]) : null),
             h('td', {}, c.title),
             h('td', {}, c.grade || '—'),
             h('td', {}, fmtHours(c.hours)),

@@ -51,7 +51,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
 - `test/test-xlsx.js` — `readXlsxRows` + `parseProgressRows` on `test/fixtures/academic-progress-sample.xlsx` (scrubbed via `test/scrub-progress-xlsx.py`) and generated workbooks.
 - `test/test-logic.js` — Business logic tests: analyze() with real catalog categories + constructed transcripts.
-- `test/test-advising-cases.js` — replays `test/fixtures/cases/*.json` (copied from the app while advising); `toolIsWrong` cases run as todo.
+- `test/test-advising-cases.js` — replays `test/fixtures/cases/*.json` (copied from the app while advising); `toolIsWrong` cases run as todo. Also checks that each case's `workdayStatus` items still parse (the case's `courses` are already parsed).
 - `test/recorder.js` — `analyze()` for the logic tests; with `CORE_TEST_REPORT=<dir>` it records each call (test name, inputs, outcome). Logic test files import `analyze` from here, not core.js.
 - `test/build-test-report.js` — runs the logic tests recording, writes `docs/test-cases.html` (every case in plain language, for the registrar; deployed with the site). Part of `npm run build`; also `npm run test-report`.
 - `test/test-workday-status.js` — Non-passing grades, repeats, Workday Status checks (accepted/mismatch), the sample export agreeing with Workday, and their rendering.
@@ -108,6 +108,8 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 
 - One sheet. Each program has a header row (`Requirement`, `Status`, `Remaining`, `Registrations Used`, `Academic Period`, `Hours`, `Grade`); `parseProgressRows` maps columns by header name. Every row below it is one requirement with at most one course/exemption, the requirement name repeated per course. A table ends at the first row lacking a requirement or status (e.g. "Program of Study GPA").
 - Both progress inputs become records `{ requirement, item, period, hours, grade }`, converted to courses by the shared `progressFromRecords`.
+- Cross-listed courses can carry every code: `SOC 250/ SOWK 250 - Diversity and Inequality…`. The first is `code`, the rest `crossListedCodes`; `analyze()` matches any of them (like a merged lab's `labCodes`), counting hours once.
+- An item that's neither a course nor a dated item (exemption, `Military - 05/01/2025`) isn't counted; `analyze()` gives it a `warnings` entry (`code: null`, `hours: null`, item verbatim as `title`) for its core requirement, so parse failures show.
 
 ## Placeholder Credit and K&U Warnings
 
@@ -119,7 +121,7 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 
 - `WORKDAY_REQUIREMENTS` / `workdayRequirementCategory` in `core.js` map Academic Progress requirement names ("Global Regions and Cultures Core") to catalog names. `test-xlsx.js` checks every core requirement in the sample export maps.
 - A course Workday lists under a requirement counts toward it (though doesn't necessarily satisfy it). Pick-one requirements count such a course even if no catalog lists it (overrides, section-specific tags): `isFromWorkday` annotation, shown as a labeled `.extra-course` (provenance `workday`). Hour-range requirements (K&U) can't place it in a sub-discipline, so they get a `warnings` entry instead.
-- Workday's Status per requirement (the .xlsx Status column; in a paste, the line after the requirement name) comes back from both progress parsers as `workdayStatus` (requirement → `{ status, items }`, items verbatim). `analyze()` compares Satisfied / Not Satisfied with its own result (`workdayChecks`; "In Progress" isn't compared). Workday Satisfied by something that isn't a course (`Military - 05/01/2025`, nothing listed) → `accepted`: the result becomes complete with `workdaySatisfied`, shown as "Satisfied in Workday" with the items verbatim. Any other disagreement → `mismatch`: a loud box first on the page with a copyable `bugReport()` (app-render.js; course list, no name or ID).
+- Workday's Status per requirement (the .xlsx Status column; in a paste, the line after the requirement name) comes back from both progress parsers as `workdayStatus` (requirement → `{ status, items }`, items verbatim). `analyze()` compares Satisfied / Not Satisfied with its own result (`workdayChecks`; "In Progress" isn't compared). Workday Satisfied by a dated item that isn't a course (`Military - 05/01/2025`) or with nothing listed → `accepted`: the result becomes complete with `workdaySatisfied`, shown as "Satisfied in Workday" with the items verbatim. Any other disagreement → `mismatch`: a loud box first on the page with a copyable `bugReport()` (app-render.js; course list, no name or ID).
 
 ## Grades and repeats
 

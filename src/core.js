@@ -70,11 +70,13 @@ function exemptionTarget(name, requirement) {
 //   { requirement, item, period, hours, grade }
 // one per "Satisfied With" entry (item null for a requirement with none),
 // which progressFromRecords turns into courses.
-const PROGRESS_COURSE_RE = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?|CORE)\s*-\s*(.+)$/;
+// Cross-listed courses can carry every code: "SOC 250/ SOWK 250 - Diversity and ...".
+const PROGRESS_COURSE_RE = /^([A-Z]{2,5})\s+(\d{3}[A-Z]?L?|CORE)((?:\s*\/\s*[A-Z]{2,5}\s+\d{3}[A-Z]?L?)*)\s*-\s*(.+)$/;
 const PROGRESS_EXEMPTION_RE = /^(.+?\bExemption)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
 // Any other dated registration ("Military - 05/01/2025"): not a course, but
 // Workday may count it toward a requirement.
 const PROGRESS_DATED_ITEM_RE = /^(.+?)\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
+const isReadableItem = item => PROGRESS_COURSE_RE.test(item) || PROGRESS_DATED_ITEM_RE.test(item);
 const WORKDAY_STATUS_RE = /^(Satisfied|Not Satisfied|In Progress)$/;
 
 function cleanRequirementName(name) {
@@ -124,7 +126,7 @@ function progressFromRecords(records) {
       if (dated) exemptions.push({ name: dated[1].trim(), date: dated[2], target: null });
       continue;
     }
-    let title = cm[3].trim();
+    let title = cm[4].trim();
     let status = 'completed';
     if (/\(In Progress\)/.test(title)) {
       status = 'in-progress';
@@ -133,8 +135,11 @@ function progressFromRecords(records) {
       status = 'transfer';
       title = title.replace(/\s*\(Transfer Credit\)/, '').trim();
     }
-    raw.push(courseEntry(cm[1], cm[2], { title, grade, hours, status, period,
-      requirements: requirement ? [requirement] : [] }));
+    const entry = courseEntry(cm[1], cm[2], { title, grade, hours, status, period,
+      requirements: requirement ? [requirement] : [] });
+    const crossListed = cm[3].split('/').map(normalizeCourseCode).filter(Boolean);
+    if (crossListed.length) entry.crossListedCodes = crossListed;
+    raw.push(entry);
   }
 
   // Deduplicate by code/title, remembering every requirement the course was
@@ -172,7 +177,6 @@ export function parseProgress(text) {
   const gradeRe = /^[A-Z]{1,2}[+-]?$/;
   // Status/remaining lines and page chrome that aren't requirement names.
   const notRequirementRe = /^(Satisfied|Not Satisfied|In Progress|Satisfied With|Minimum\b.*|.*Sort and filter column)$/;
-  const isItem = line => PROGRESS_COURSE_RE.test(line) || PROGRESS_DATED_ITEM_RE.test(line);
   const records = [];
   let requirement = null;
   let requirementRecord = null;
@@ -213,7 +217,7 @@ export function parseProgress(text) {
     let period = null;
     for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
       const next = lines[j];
-      if (isItem(next)) break;
+      if (isReadableItem(next)) break;
       if (periodRe.test(next)) {
         period = next;
       } else if (hoursRe.test(next) && hours === 0) {
@@ -639,12 +643,14 @@ export function analyze(cats, transcript, options = {}) {
   const takenMap = {};
   for (const c of mergedTranscript) { if (c.code) takenMap[c.code] = c; }
   // A merged lab still satisfies requirements that list the lab code itself
-  // (e.g. ENGR 303L in the 2025-26 Environmental Sustainability tag).
+  // (e.g. ENGR 303L in the 2025-26 Environmental Sustainability tag), and a
+  // cross-listed course (SOC 250/ SOWK 250) any requirement listing one of its
+  // codes. They share one transcript entry, so its hours count once.
   for (const c of mergedTranscript) {
-    for (const lab of c.labCodes || []) {
-      takenMap[lab] = c;
-      (inProgressSet.has(c.code) ? inProgressSet : takenSet).add(lab);
-      allActiveSet.add(lab);
+    for (const alias of [...(c.labCodes || []), ...(c.crossListedCodes || [])]) {
+      takenMap[alias] = c;
+      (inProgressSet.has(c.code) ? inProgressSet : takenSet).add(alias);
+      allActiveSet.add(alias);
     }
   }
   const extraCourses = options.extraCourses || {};
@@ -851,6 +857,17 @@ export function analyze(cats, transcript, options = {}) {
         : `Workday counts it toward ${name}, but no known catalog lists it there`);
     }
   }
+  // Registrations Workday lists that this tool can't read as a course or a
+  // dated item (exemption, military credit): nothing of them is counted.
+  for (const [req, { items }] of options.workdayStatus || []) {
+    const name = KU_REQUIREMENT_RE.test(req) ? 'K&U' : workdayRequirementCategory(req);
+    if (name !== 'K&U' && !pageCatNames.has(name)) continue;
+    for (const item of items) {
+      if (isReadableItem(item)) continue;
+      warnings.push({ code: null, title: item, hours: null, requirement: name,
+        reason: 'Workday lists this registration here, but this tool couldn\u2019t read it as a course' });
+    }
+  }
 
   const kuResults = results.filter(r => KU_NAMES.includes(r.name));
   const kuMet = kuAggregate ? kuTotal >= kuAggregate.minHours && kuCount >= kuAggregate.minCategories
@@ -858,8 +875,8 @@ export function analyze(cats, transcript, options = {}) {
   const kuSummary = { totalHours: kuTotal, requiredHours: kuAggregate?.minHours ?? null, categoriesUsed: kuCount,
     requiredCategories: kuAggregate?.minCategories ?? null, hoursByCategory: kuH, met: kuMet };
 
-  // Workday's Status vs ours. Workday "Satisfied" by something that isn't a
-  // course ("Military - 05/01/2025", an override with nothing listed) is taken
+  // Workday's Status vs ours. Workday "Satisfied" by a dated item that isn't a
+  // course ("Military - 05/01/2025"), or with nothing listed (an override), is taken
   // at its word ('accepted'). Any other disagreement is a 'mismatch': one of
   // us is wrong, and the app asks for a bug report. "In Progress" isn't
   // compared: Workday uses it for both partly done and done-once-courses-finish.
@@ -874,7 +891,7 @@ export function analyze(cats, transcript, options = {}) {
     const oursDone = isKu ? kuMet : r.isExempt || r.status === 'complete';
     if (oursDone === (workdayStatus === 'Satisfied')) continue;
     const accepted = workdayStatus === 'Satisfied'
-      && (items.length === 0 || items.some(i => !PROGRESS_COURSE_RE.test(i)));
+      && (items.length === 0 || items.some(i => PROGRESS_DATED_ITEM_RE.test(i) && !PROGRESS_COURSE_RE.test(i)));
     workdayChecks.push({ requirement: name, workdayRequirement, workdayStatus, ourStatus, items,
       kind: accepted ? 'accepted' : 'mismatch' });
     if (accepted) {
