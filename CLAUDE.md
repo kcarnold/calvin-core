@@ -1,4 +1,4 @@
-# Calvin Core Annotator
+# Calvin Core Planner
 
 Shows a student's core program status from pasted Workday data. The **Core Planner** (`docs/index.html` + `src/app.js`) is the standalone app; it bundles the saved catalog JSON. Doesn't look like the catalog, on purpose. Keeps "Workday is the official record" hedging. Must stay entirely client-side (CSP `connect-src 'none'`; Workday .xlsx exports are read locally).
 
@@ -6,7 +6,7 @@ Supported catalogs (listed in `CATALOGS` in `src/app.js`; students use the catal
 - `catoid=25&navoid=803` — 2026–27. Adds the "Rhetoric in Disciplines" pick-one requirement.
 - `catoid=24&navoid=780` — 2025–26.
 
-**Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `app.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to categories on the open page. Taken courses matched only via the union get `isFromOtherCatalog` annotations with no `element`; the app lists them in a note on the block. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
+**Course lists are the union of all known catalogs.** Courses get renumbered between years (ENST 210 → GEO 210, MATH 171 → MATH 161), so a course listed for a requirement in *any* known catalog counts toward it (assumption: once satisfying, always satisfying). `src/catalog-courses.js` (generated) holds the union; `app.js` passes it to `analyze()` as `extraCourses`. It's additive only and limited to requirements in the selected catalog. Taken courses matched only via the union get `isFromOtherCatalog` annotations; the app lists them as labeled `.extra-course` items. Future per-section mappings (e.g. a PHIL 153 section tagged Diversity and Difference, visible in Academic Progress but not the catalog) should feed the same additive path.
 
 catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an empty 202. Save page HTML from a real browser into `catalog/catalog-<catoid>.html`, update `CATALOG_INFO` (savedAt; navoid for a new catalog) in `scripts/catalog-json.js`, and run `npm run generate-catalog -- <catoid>`. A new catalog also needs adding to `CATALOGS` in `src/app.js`.
 
@@ -38,6 +38,7 @@ catalog.calvin.edu sits behind an AWS WAF bot challenge: `curl`/`fetch` get an e
 - `src/app-render.js` — `renderApp(root, state)`: builds the app page from catalog JSON + optional analysis. Uses `root.ownerDocument`, so tests render it in jsdom. With `state.tocRoot`, also `renderToc`: the Contents sidebar (every section/requirement with the card's status icon; K&U section shows the aggregate). Sticky beside the content at ≥1200px, a floating "Contents" panel below; `app.js` highlights the entry in view.
 - `src/test-case.js` — `buildTestCase`/`formatTestCase`: the current record as a de-identified test case (grades → A/D/F keeping I, W, N, NR, CR; years shifted to start at 2000; non-core Workday requirements dropped), shown collapsed at the bottom of the app and used in bug reports. `expected` = the tool's result; advisors correct it and set `toolIsWrong` when the tool is wrong.
 - `src/catalog-courses.js` — Generated: `KNOWN_COURSE_CATEGORIES`, union of course lists across `catalog-categories-*.json`. Don't edit by hand.
+- `docs/bookmarklet.js`, `docs/bookmarklet.html` — hand-written stubs for the retired catalog-page bookmarklet: old bookmarks show a banner linking to the app; the install page redirects to it.
 - `build.js` — esbuild: bundles `docs/app.js` (standalone app) and `docs/overlap-view.js`.
 - `test/helpers.js` — Fluent scenario API and generic opportunity verifier for unit tests.
 - `test/test-parsing.js` — Parsing unit tests (parseTranscript, parseProgress, detectInputFormat, parseCoreProgram).
@@ -75,7 +76,7 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 4. **Integration tests** (`test/run-test.js`) — full pipeline with real transcript files and JSON snapshot comparison.
 5. **Catalog claims / snapshot / app fidelity** — see "Not claiming more than the catalog".
 
-## Target Page DOM
+## Catalog Page DOM (saved HTML)
 
 - Core categories live in `div.acalog-core` blocks (~22 of them). Section headers use `<h2>`, categories `<h3>`, Engaged Citizenship tags `<h4>`.
 - Courses are `li.acalog-course` inside `<ul>`. Course text is in the `<a>` child — never use `li.textContent` directly because expanded course descriptions pollute it.
@@ -104,13 +105,13 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 ## Placeholder Credit and K&U Warnings
 
 - AP/transfer core credit can arrive with no course number: `HIST CORE - AP/Transfer History Core (Transfer Credit)`. Parsers set `isPlaceholder` + `subject`.
-- `inferPlaceholderCategory` assumes it counts where ≥75% of that subject's K&U courses (page + union) sit, as that sub-discipline (HIST → Humanities/History, ARTS → Arts/Visual Arts). Ambiguous subjects (HNRS) aren't guessed. Assumed courses get `isAssumed` annotations with no `element`; render shows an orange "Assumed" note on the block.
-- `analysis.warnings` (`{ code, title, hours, requirement, reason }`, `requirement` a catalog name or `'K&U'`): placeholders we couldn't place, and courses Workday lists under a requirement that don't count toward it here (e.g. under K&U but in no K&U category). Render shows a warning box above the summary; the app status mentions the count.
+- `inferPlaceholderCategory` assumes it counts where ≥75% of that subject's K&U courses (selected catalog + union) sit, as that sub-discipline (HIST → Humanities/History, ARTS → Arts/Visual Arts). Ambiguous subjects (HNRS) aren't guessed. Assumed courses get `isAssumed` annotations, shown as labeled `.extra-course` items ("Assumed: …") and listed under the summary's assumptions.
+- `analysis.warnings` (`{ code, title, hours, requirement, reason }`, `requirement` a catalog name or `'K&U'`): placeholders we couldn't place, and courses Workday lists under a requirement that don't count toward it here (e.g. under K&U but in no K&U category). The app shows a warning box above the summary; its status line mentions the count.
 
 ## Workday Requirement Listings
 
 - `WORKDAY_REQUIREMENTS` / `workdayRequirementCategory` in `core.js` map Academic Progress requirement names ("Global Regions and Cultures Core") to catalog names. `test-xlsx.js` checks every core requirement in the sample export maps.
-- A course Workday lists under a requirement counts toward it (though doesn't necessarily satisfy it). Pick-one requirements count such a course even if no catalog lists it (overrides, section-specific tags): `isFromWorkday` annotation, no `element`, shown as a labeled `.extra-course` (provenance `workday`). Hour-range requirements (K&U) can't place it in a sub-discipline, so they get a `warnings` entry instead.
+- A course Workday lists under a requirement counts toward it (though doesn't necessarily satisfy it). Pick-one requirements count such a course even if no catalog lists it (overrides, section-specific tags): `isFromWorkday` annotation, shown as a labeled `.extra-course` (provenance `workday`). Hour-range requirements (K&U) can't place it in a sub-discipline, so they get a `warnings` entry instead.
 - Workday's Status per requirement (the .xlsx Status column; in a paste, the line after the requirement name) comes back from both progress parsers as `workdayStatus` (requirement → `{ status, items }`, items verbatim). `analyze()` compares Satisfied / Not Satisfied with its own result (`workdayChecks`; "In Progress" isn't compared). Workday Satisfied by something that isn't a course (`Military - 05/01/2025`, nothing listed) → `accepted`: the result becomes complete with `workdaySatisfied`, shown as "Satisfied in Workday" with the items verbatim. Any other disagreement → `mismatch`: a loud box first on the page with a copyable `bugReport()` (app-render.js; course list, no name or ID).
 
 ## Grades and repeats
@@ -136,10 +137,10 @@ npm run generate-schedule       # re-generate schedule/sections.json from schedu
 ### Category result statuses (from `analyze()`)
 - `header` — section-level heading (e.g., "Foundations"); not a real requirement; skipped in tests and rendering.
 - `info-only` — category has no courses listed (nothing to fulfill); skipped in tests. (The app shows Engaged Citizenship Commitments as "N of 3 tags".)
-- `complete` — all requirements satisfied. Pick-one: ≥1 course taken. Hour-range: min hours met and no more can be added (discipline cap reached or maxHours hit). Badge: "✓ COMPLETE"; block fades to 0.45 opacity.
-- `satisfied` — K&U hour-range: minimum hours met (including minHours=0 with hours > 0) **and** more hours could still be counted (room in discipline/max). Badge: "MIN MET". Distinct from `complete` to signal the student can keep going.
-- `incomplete` — requirement not yet met. Pick-one: no course taken. Hour-range: below minHours. Badge: "AREAS TO EXPLORE" or "X/Y+ hrs".
-- `optional-available` — optional requirement (minHours = 0) with 0 hours earned (e.g., World Languages II). Badge: "OPTIONAL".
+- `complete` — all requirements satisfied. Pick-one: ≥1 course taken. Hour-range: min hours met and no more can be added (discipline cap reached or maxHours hit). App: "Complete".
+- `satisfied` — K&U hour-range: minimum hours met (including minHours=0 with hours > 0) **and** more hours could still be counted (room in discipline/max). App: "Minimum met". Distinct from `complete` to signal the student can keep going.
+- `incomplete` — requirement not yet met. Pick-one: no course taken. Hour-range: below minHours. App: "Not yet" (pick-one) or "X of Y+ hrs".
+- `optional-available` — optional requirement (minHours = 0) with 0 hours earned (e.g., World Languages II). App: "Optional".
 
 ### Transcript course statuses (from `parseTranscript()`)
 - `completed` — normal graded/passed course.
